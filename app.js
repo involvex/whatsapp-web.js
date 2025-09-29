@@ -458,15 +458,15 @@ class WhatsAppAIClient {
                 const defaultProfilePic = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 212 212%22%3E%3Cpath fill=%22%2325D366%22 d=%22M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z%22/%3E%3C/svg%3E';
                 
                 // Check for empty contact ID
-                if (!contactId || contactId === 'undefined' || contactId === 'null') {
+                if (!contactId || contactId === 'undefined' || contactId === 'null' || contactId === '0') {
                     return res.json({ profilePicUrl: defaultProfilePic });
                 }
                 
                 // Check negative cache first (for IDs we know don't have pictures)
                 if (this.cache.negativeImages && this.cache.negativeImages.has(contactId)) {
                     const lastChecked = this.cache.negativeImages.get(contactId);
-                    // Only use negative cache for 5 minutes
-                    if (Date.now() - lastChecked < 5 * 60 * 1000) {
+                    // Only use negative cache for 30 minutes
+                    if (Date.now() - lastChecked < 30 * 60 * 1000) {
                         return res.json({ profilePicUrl: defaultProfilePic });
                     }
                 }
@@ -480,24 +480,39 @@ class WhatsAppAIClient {
                 // If it doesn't have @c.us or @g.us suffix, add @c.us
                 const formattedId = contactId.includes('@') ? contactId : `${contactId}@c.us`;
                 
-                // Only log if we're actually making a WhatsApp API call
-                // console.log(`Fetching profile picture for ${formattedId}`);
-                
                 // Check if client is ready
                 if (!this.client || !this.isReady) {
                     // Client not ready, return default
                     return res.json({ profilePicUrl: defaultProfilePic });
                 }
                 
+                // Rate limiting - check if we're making too many requests
+                const now = Date.now();
+                if (!this.profilePicRequestTimes) {
+                    this.profilePicRequestTimes = [];
+                }
+                
+                // Keep only requests from the last minute
+                this.profilePicRequestTimes = this.profilePicRequestTimes.filter(time => now - time < 60000);
+                
+                // If more than 20 requests in the last minute, use negative cache
+                if (this.profilePicRequestTimes.length > 20) {
+                    // Add to negative cache with a short expiration
+                    if (!this.cache.negativeImages) {
+                        this.cache.negativeImages = new Map();
+                    }
+                    this.cache.negativeImages.set(contactId, now);
+                    return res.json({ profilePicUrl: defaultProfilePic });
+                }
+                
+                // Add this request to the times
+                this.profilePicRequestTimes.push(now);
+                
                 let profilePicUrl;
                 try {
                     profilePicUrl = await this.client.getProfilePicUrl(formattedId);
-                    // Only log if found to reduce console spam
-                    if (profilePicUrl) {
-                        console.log(`Profile pic found for ${formattedId}`);
-                    }
+                    // No logging - completely silent operation
                 } catch (error) {
-                    // Don't log every error to reduce console spam
                     profilePicUrl = null;
                 }
                 
@@ -509,7 +524,7 @@ class WhatsAppAIClient {
                     if (!this.cache.negativeImages) {
                         this.cache.negativeImages = new Map();
                     }
-                    this.cache.negativeImages.set(contactId, Date.now());
+                    this.cache.negativeImages.set(contactId, now);
                     
                     // Use default placeholder
                     profilePicUrl = defaultProfilePic;
@@ -517,7 +532,7 @@ class WhatsAppAIClient {
                 
                 res.json({ profilePicUrl });
             } catch (error) {
-                console.error('Error getting profile picture:', error);
+                // Silent error handling - no console logs
                 res.json({ 
                     profilePicUrl: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 212 212%22%3E%3Cpath fill=%22%2325D366%22 d=%22M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z%22/%3E%3C/svg%3E'
                 });
