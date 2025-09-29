@@ -1,0 +1,31 @@
+{
+    "name": "whatsapp-ai-web",
+    "version": "1.0.0",
+    "description": "WhatsApp Web App with AI Integration using Gemini",
+    "main": "app.js",
+    "scripts": {
+        "start": "node app.js",
+        "dev": "nodemon app.js",
+        "build": "npm run build:frontend",
+        "build:frontend": "cd public && npm run build"
+    },
+    "dependencies": {
+        "express": "^4.18.2",
+        "socket.io": "^4.7.2",
+        "qrcode": "^1.5.3",
+        "@google/generative-ai": "^0.2.1",
+        "dotenv": "^16.3.1",
+        "cors": "^2.8.5",
+        "helmet": "^7.0.0",
+        "compression": "^1.7.4"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.1"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "keywords": ["whatsapp", "ai", "gemini", "web-app", "chat"],
+    "author": "WhatsApp AI Web",
+    "license": "MIT"
+}

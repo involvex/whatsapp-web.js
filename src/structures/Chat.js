@@ -79,15 +79,17 @@ class Chat extends Base {
          * Last message fo chat
          * @type {Message}
          */
-        this.lastMessage = data.lastMessage ? new Message(this.client, data.lastMessage) : undefined;
-        
+        this.lastMessage = data.lastMessage
+            ? new Message(this.client, data.lastMessage)
+            : undefined;
+
         return super._patch(data);
     }
 
     /**
      * Send a message to this chat
      * @param {string|MessageMedia|Location} content
-     * @param {MessageSendOptions} [options] 
+     * @param {MessageSendOptions} [options]
      * @returns {Promise<Message>} Message that was just sent
      */
     async sendMessage(content, options) {
@@ -107,7 +109,7 @@ class Chat extends Base {
      * @returns {Promise<boolean>} result
      */
     async clearMessages() {
-        return this.client.pupPage.evaluate(chatId => {
+        return this.client.pupPage.evaluate((chatId) => {
             return window.WWebJS.sendClearChat(chatId);
         }, this.id._serialized);
     }
@@ -117,7 +119,7 @@ class Chat extends Base {
      * @returns {Promise<Boolean>} result
      */
     async delete() {
-        return this.client.pupPage.evaluate(chatId => {
+        return this.client.pupPage.evaluate((chatId) => {
             return window.WWebJS.sendDeleteChat(chatId);
         }, this.id._serialized);
     }
@@ -158,7 +160,10 @@ class Chat extends Base {
      * @returns {Promise<{isMuted: boolean, muteExpiration: number}>}
      */
     async mute(unmuteDate) {
-        const result = await this.client.muteChat(this.id._serialized, unmuteDate);
+        const result = await this.client.muteChat(
+            this.id._serialized,
+            unmuteDate,
+        );
         this.isMuted = result.isMuted;
         this.muteExpiration = result.muteExpiration;
         return result;
@@ -178,7 +183,7 @@ class Chat extends Base {
     /**
      * Mark this chat as unread
      */
-    async markUnread(){
+    async markUnread() {
         return this.client.markChatUnread(this.id._serialized);
     }
 
@@ -190,45 +195,57 @@ class Chat extends Base {
      * @returns {Promise<Array<Message>>}
      */
     async fetchMessages(searchOptions) {
-        let messages = await this.client.pupPage.evaluate(async (chatId, searchOptions) => {
-            const msgFilter = (m) => {
-                if (m.isNotification) {
-                    return false; // dont include notification messages
+        let messages = await this.client.pupPage.evaluate(
+            async (chatId, searchOptions) => {
+                const msgFilter = (m) => {
+                    if (m.isNotification) {
+                        return false; // dont include notification messages
+                    }
+                    if (
+                        searchOptions &&
+                        searchOptions.fromMe !== undefined &&
+                        m.id.fromMe !== searchOptions.fromMe
+                    ) {
+                        return false;
+                    }
+                    return true;
+                };
+
+                const chat = await window.WWebJS.getChat(chatId, {
+                    getAsModel: false,
+                });
+                let msgs = chat.msgs.getModelsArray().filter(msgFilter);
+
+                if (searchOptions && searchOptions.limit > 0) {
+                    while (msgs.length < searchOptions.limit) {
+                        const loadedMessages =
+                            await window.Store.ConversationMsgs.loadEarlierMsgs(
+                                chat,
+                            );
+                        if (!loadedMessages || !loadedMessages.length) break;
+                        msgs = [...loadedMessages.filter(msgFilter), ...msgs];
+                    }
+
+                    if (msgs.length > searchOptions.limit) {
+                        msgs.sort((a, b) => (a.t > b.t ? 1 : -1));
+                        msgs = msgs.splice(msgs.length - searchOptions.limit);
+                    }
                 }
-                if (searchOptions && searchOptions.fromMe !== undefined && m.id.fromMe !== searchOptions.fromMe) {
-                    return false;
-                }
-                return true;
-            };
 
-            const chat = await window.WWebJS.getChat(chatId, { getAsModel: false });
-            let msgs = chat.msgs.getModelsArray().filter(msgFilter);
+                return msgs.map((m) => window.WWebJS.getMessageModel(m));
+            },
+            this.id._serialized,
+            searchOptions,
+        );
 
-            if (searchOptions && searchOptions.limit > 0) {
-                while (msgs.length < searchOptions.limit) {
-                    const loadedMessages = await window.Store.ConversationMsgs.loadEarlierMsgs(chat);
-                    if (!loadedMessages || !loadedMessages.length) break;
-                    msgs = [...loadedMessages.filter(msgFilter), ...msgs];
-                }
-                
-                if (msgs.length > searchOptions.limit) {
-                    msgs.sort((a, b) => (a.t > b.t) ? 1 : -1);
-                    msgs = msgs.splice(msgs.length - searchOptions.limit);
-                }
-            }
-
-            return msgs.map(m => window.WWebJS.getMessageModel(m));
-
-        }, this.id._serialized, searchOptions);
-
-        return messages.map(m => new Message(this.client, m));
+        return messages.map((m) => new Message(this.client, m));
     }
 
     /**
      * Simulate typing in chat. This will last for 25 seconds.
      */
     async sendStateTyping() {
-        return this.client.pupPage.evaluate(chatId => {
+        return this.client.pupPage.evaluate((chatId) => {
             window.WWebJS.sendChatstate('typing', chatId);
             return true;
         }, this.id._serialized);
@@ -238,7 +255,7 @@ class Chat extends Base {
      * Simulate recording audio in chat. This will last for 25 seconds.
      */
     async sendStateRecording() {
-        return this.client.pupPage.evaluate(chatId => {
+        return this.client.pupPage.evaluate((chatId) => {
             window.WWebJS.sendChatstate('recording', chatId);
             return true;
         }, this.id._serialized);
@@ -248,7 +265,7 @@ class Chat extends Base {
      * Stops typing or recording in chat immediately.
      */
     async clearState() {
-        return this.client.pupPage.evaluate(chatId => {
+        return this.client.pupPage.evaluate((chatId) => {
             window.WWebJS.sendChatstate('stop', chatId);
             return true;
         }, this.id._serialized);
@@ -286,7 +303,7 @@ class Chat extends Base {
     async getPinnedMessages() {
         return this.client.getPinnedMessages(this.id._serialized);
     }
-    
+
     /**
      * Sync chat history conversation
      * @return {Promise<boolean>} True if operation completed successfully, false otherwise.
@@ -321,7 +338,7 @@ class Chat extends Base {
      */
     async getCustomerNote() {
         if (this.isGroup || this.isChannel) return null;
-        
+
         return this.client.getCustomerNote(this.id._serialized);
     }
 }
