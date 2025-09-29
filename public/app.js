@@ -3777,9 +3777,7 @@ class WhatsAppAIApp {
         div.textContent = text;
         return div.innerHTML;
     }
-}
 
-// Initialize the app when the page loads
     // Schedule Message Methods
     setupScheduleModal() {
         const modal = document.getElementById('schedule-modal');
