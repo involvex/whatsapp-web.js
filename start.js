@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 const { spawn } = require('child_process');
-const path = require('path');
 const fs = require('fs');
 
 console.log('🚀 Starting WhatsApp AI Web App...\n');

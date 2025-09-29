@@ -5,18 +5,29 @@
     box-sizing: border-box;
 }
 
+html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
 body {
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     background: #111b21;
     color: #e9edef;
     height: 100vh;
+    width: 100vw;
+    margin: 0;
+    padding: 0;
     overflow: hidden;
 }
 
 #app {
     height: 100vh;
+    width: 100vw;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 /* Loading Screen */
@@ -106,16 +117,24 @@ body {
 .main-app {
     display: flex;
     height: 100vh;
+    width: 100vw;
+    max-width: 100vw;
+    overflow: hidden;
+    position: relative;
 }
 
 /* Sidebar */
 .sidebar {
-    width: 30%;
-    min-width: 300px;
+    width: 400px;
+    min-width: 400px;
+    max-width: 400px;
+    flex: 0 0 400px;
     background: #2a3942;
     border-right: 1px solid #3b4a54;
     display: flex;
     flex-direction: column;
+    position: relative;
+    z-index: 10;
 }
 
 .sidebar-header {
@@ -285,6 +304,8 @@ body {
     padding: 10px;
     max-height: 200px;
     overflow-y: auto;
+    display: none;
+    flex-shrink: 0;
 }
 
 .ai-prompts-header {
@@ -463,6 +484,44 @@ body {
     background: #2a3942;
 }
 
+.chat-item.pinned {
+    background: #1a2530;
+    border-left: 3px solid #25d366;
+}
+
+.chat-item.pinned .chat-name::before {
+    content: '📌 ';
+    margin-right: 4px;
+}
+
+.pin-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: #8696a0;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.chat-item:hover .pin-btn {
+    display: flex;
+}
+
+.pin-btn:hover {
+    background: #3b4a54;
+    color: #25d366;
+}
+
+.pin-btn.pinned {
+    display: flex;
+    color: #25d366;
+}
+
 .chat-avatar {
     width: 50px;
     height: 50px;
@@ -524,10 +583,15 @@ body {
 
 /* Chat Area */
 .chat-area {
-    flex: 1;
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     background: #0b141a;
+    min-width: 0;
+    width: 0;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
 }
 
 .chat-header {
@@ -537,6 +601,12 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.back-btn {
+    display: none;
+    margin-right: 0.5rem;
 }
 
 .chat-info {
@@ -575,9 +645,12 @@ body {
 
 /* Messages Area */
 .messages-area {
-    flex: 1;
+    flex: 1 1 auto;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 1rem;
+    min-height: 0;
+    width: 100%;
     background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="%23ffffff" opacity="0.02"/><circle cx="75" cy="75" r="1" fill="%23ffffff" opacity="0.02"/><circle cx="50" cy="10" r="1" fill="%23ffffff" opacity="0.02"/><circle cx="10" cy="60" r="1" fill="%23ffffff" opacity="0.02"/><circle cx="90" cy="40" r="1" fill="%23ffffff" opacity="0.02"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
 }
 
@@ -609,6 +682,7 @@ body {
     display: flex;
     align-items: flex-end;
     gap: 0.5rem;
+    width: 100%;
 }
 
 .message.sent {
@@ -629,7 +703,7 @@ body {
 }
 
 .message-content {
-    max-width: 60%;
+    max-width: 65%;
     background: #202c33;
     padding: 0.5rem 1rem;
     border-radius: 8px;
@@ -673,6 +747,7 @@ body {
     padding: 1rem;
     background: #202c33;
     border-top: 1px solid #3b4a54;
+    flex-shrink: 0;
 }
 
 .message-input {
@@ -1656,6 +1731,10 @@ body {
     display: none !important;
 }
 
+.hidden-input {
+    display: none;
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
     width: 6px;
@@ -1676,13 +1755,23 @@ body {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+    .main-app {
+        flex-direction: column;
+    }
+
     .sidebar {
         width: 100%;
         min-width: unset;
+        max-width: 100%;
+        flex: 0 0 auto;
+        height: auto;
+        max-height: 100vh;
     }
 
     .chat-area {
         display: none;
+        width: 100%;
+        flex: 0 0 auto;
     }
 
     .chat-area.active {
@@ -1690,9 +1779,14 @@ body {
         position: fixed;
         top: 0;
         left: 0;
-        width: 100%;
-        height: 100%;
+        width: 100vw;
+        height: 100vh;
         z-index: 200;
+    }
+
+    /* Show back button on mobile */
+    .chat-header .back-btn {
+        display: flex !important;
     }
 }
 

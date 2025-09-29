@@ -66,9 +66,9 @@ class ServiceManager {
             console.log(`✅ Service stopped (PID: ${pid})`);
         } catch (error) {
             console.log('⚠️  Could not stop service gracefully, forcing...');
-            exec('taskkill /F /IM node.exe', (error, stdout, stderr) => {
-                if (error) {
-                    console.log('❌ Error stopping service:', error.message);
+            exec('taskkill /F /IM node.exe', (err) => {
+                if (err) {
+                    console.log('❌ Error stopping service:', err.message);
                 } else {
                     console.log('✅ Service force-stopped');
                 }

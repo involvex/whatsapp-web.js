@@ -4,7 +4,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>WhatsApp AI Web</title>
-        <link rel="stylesheet" href="styles.css" />
+        <link rel="stylesheet" href="/styles.css" />
         <link
             href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
             rel="stylesheet"
@@ -145,8 +145,8 @@
                     >
                         <div class="sync-header">
                             <h3>Google Contacts Sync</h3>
-                            <button class="close-btn" id="close-sync-btn">
-                                <i class="fas fa-times"></i>
+                            <button class="close-btn" id="close-sync-btn" title="Close Google Contacts Sync" aria-label="Close Google Contacts Sync">
+                                <i class="fas fa-times" aria-hidden="true"></i>
                             </button>
                         </div>
                         <div class="sync-content">
@@ -179,8 +179,8 @@
                     <div class="cache-section hidden" id="cache-section">
                         <div class="cache-header">
                             <h3>Cache Management</h3>
-                            <button class="close-btn" id="close-cache-btn">
-                                <i class="fas fa-times"></i>
+                            <button class="close-btn" id="close-cache-btn" title="Close Cache Management" aria-label="Close Cache Management">
+                                <i class="fas fa-times" aria-hidden="true"></i>
                             </button>
                         </div>
                         <div class="cache-content">
@@ -209,6 +209,9 @@
                 <div class="chat-area">
                     <!-- Chat Header -->
                     <div class="chat-header">
+                        <button class="action-btn back-btn" id="back-to-chats" title="Back to chats" aria-label="Back to chats">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
                         <div class="chat-info">
                             <div class="chat-avatar">
                                 <i class="fas fa-user"></i>
@@ -262,15 +265,18 @@
                     <div
                         class="ai-prompts-container"
                         id="ai-prompts-container"
-                        style="display: none"
                     >
                         <div class="ai-prompts-header">
                             <span>AI Suggestions</span>
                             <button
                                 id="close-ai-prompts"
                                 class="close-ai-prompts"
+                                title="Close AI Suggestions"
                             >
+                                <span class="sr-only">Close</span>
                                 <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                             </button>
                         </div>
                         <div class="ai-prompts-list" id="ai-prompts-list">
@@ -317,7 +323,8 @@
                                     <i class="fas fa-smile"></i>
                                 </button>
                             </div>
-                            <button class="send-btn" id="send-btn" disabled>
+                            <button class="send-btn" id="send-btn" disabled title="Send">
+                                <span class="sr-only">Send</span>
                                 <i class="fas fa-paper-plane"></i>
                             </button>
                         </div>
@@ -330,7 +337,7 @@
                 <div class="ai-modal-content">
                     <div class="ai-modal-header">
                         <h3>AI Response Options</h3>
-                        <button class="close-btn" id="close-ai-modal">
+                        <button class="close-btn" id="close-ai-modal" title="Close AI Response Options" aria-label="Close AI Response Options">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -377,8 +384,9 @@
             >
                 <div class="contact-details-header">
                     <h3>Contact Details</h3>
-                    <button class="close-btn" id="close-contact-details-btn">
-                        <i class="fas fa-times"></i>
+                    <button class="close-btn" id="close-contact-details-btn" title="Close Contact Details" aria-label="Close Contact Details">
+                        <span class="sr-only">Close Contact Details</span>
+                        <i class="fas fa-times" aria-hidden="true"></i>
                     </button>
                 </div>
                 <div
@@ -396,8 +404,9 @@
             >
                 <div class="export-import-header">
                     <h3>Export & Import</h3>
-                    <button class="close-btn" id="close-export-import-btn">
-                        <i class="fas fa-times"></i>
+                    <button class="close-btn" id="close-export-import-btn" title="Close Export & Import">
+                        <span class="sr-only">Close Export & Import</span>
+                        <i class="fas fa-times" aria-hidden="true"></i>
                     </button>
                 </div>
                 <div class="export-import-content">
@@ -425,12 +434,15 @@
                     <div class="import-section">
                         <h4>Import Files</h4>
                         <div class="import-options">
+                            <label for="import-files-input" class="sr-only">Select files to import</label>
                             <input
                                 type="file"
                                 id="import-files-input"
                                 multiple
                                 accept="image/*,video/*,.pdf,.doc,.docx,.txt"
-                                style="display: none"
+                                title="Select files to import"
+                                placeholder="Choose files"
+                                class="hidden-input"
                             />
                             <button class="import-btn" id="import-files-btn">
                                 <i class="fas fa-upload"></i> Select Files
@@ -451,6 +463,6 @@
         </div>
 
         <script src="/socket.io/socket.io.js"></script>
-        <script src="app.js"></script>
+        <script src="/app.js"></script>
     </body>
 </html>

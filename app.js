@@ -3,6 +3,7 @@ const http = require('http');
 const https = require('https');
 const socketIo = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 const { Client, LocalAuth } = require('./index'); // Use local whatsapp-web.js
 const qrcode = require('qrcode');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -11,6 +12,9 @@ const helmet = require('helmet');
 const compression = require('compression');
 const SSLGenerator = require('./generate-ssl');
 require('dotenv').config();
+
+// Check if in dev mode
+const isDev = process.argv.includes('--dev');
 
 class WhatsAppAIClient {
     constructor() {
@@ -92,37 +96,11 @@ class WhatsAppAIClient {
         // Security and performance middleware
         this.app.use(
             helmet({
-                contentSecurityPolicy: {
-                    directives: {
-                        defaultSrc: ['\'self\''],
-                        styleSrc: [
-                            '\'self\'',
-                            '\'unsafe-inline\'',
-                            'https://cdnjs.cloudflare.com',
-                            'https://fonts.googleapis.com',
-                        ],
-                        scriptSrc: [
-                            '\'self\'',
-                            '\'unsafe-inline\'',
-                            '\'unsafe-hashes\'',
-                            'https://cdnjs.cloudflare.com',
-                        ],
-                        imgSrc: ['\'self\'', 'data:', 'blob:'],
-                        mediaSrc: ['\'self\'', 'data:', 'blob:'],
-                        connectSrc: ['\'self\'', 'ws:', 'wss:'],
-                        fontSrc: [
-                            '\'self\'',
-                            'https://cdnjs.cloudflare.com',
-                            'https://fonts.gstatic.com',
-                            'https://fonts.googleapis.com',
-                        ],
-                        objectSrc: ['\'none\''],
-                        // Removed upgradeInsecureRequests to allow HTTP access
-                    },
-                },
+                contentSecurityPolicy: false, // Disable CSP to prevent HTTP/HTTPS conflicts
                 crossOriginEmbedderPolicy: false,
                 crossOriginOpenerPolicy: false,
                 crossOriginResourcePolicy: false,
+                hsts: false, // Disable HSTS to allow HTTP
             }),
         );
         this.app.use(compression());
@@ -131,40 +109,124 @@ class WhatsAppAIClient {
 
         // Add headers to prevent HTTPS upgrade and improve network access
         this.app.use((req, res, next) => {
-            // Prevent browser from upgrading to HTTPS
-            res.setHeader('Strict-Transport-Security', '');
+            // Explicitly remove HSTS to prevent HTTPS upgrade
+            res.removeHeader('Strict-Transport-Security');
             res.setHeader('X-Content-Type-Options', 'nosniff');
             res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-            res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+            res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
             next();
         });
         // Serve static files with proper MIME types
         this.app.use(
             express.static(path.join(__dirname, 'public'), {
-                setHeaders: (res, path) => {
-                    if (path.endsWith('.html')) {
+                setHeaders: (res, filePath) => {
+                    if (filePath.endsWith('.html')) {
                         res.setHeader(
                             'Content-Type',
                             'text/html; charset=utf-8',
                         );
-                    } else if (path.endsWith('.css')) {
+                    } else if (filePath.endsWith('.css')) {
                         res.setHeader(
                             'Content-Type',
                             'text/css; charset=utf-8',
                         );
-                    } else if (path.endsWith('.js')) {
+                        // Prevent CSS caching in dev mode
+                        if (isDev) {
+                            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                            res.setHeader('Pragma', 'no-cache');
+                            res.setHeader('Expires', '0');
+                        }
+                    } else if (filePath.endsWith('.js')) {
                         res.setHeader(
                             'Content-Type',
                             'application/javascript; charset=utf-8',
                         );
+                        // Prevent JS caching in dev mode
+                        if (isDev) {
+                            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                            res.setHeader('Pragma', 'no-cache');
+                            res.setHeader('Expires', '0');
+                        }
                     }
                 },
             }),
         );
 
+        // Hot reload setup in dev mode
+        if (isDev) {
+            console.log('🔥 Hot reload enabled');
+            this.setupHotReload();
+        }
+
         // Serve the main page
         this.app.get('/', (req, res) => {
-            res.sendFile(path.join(__dirname, 'public', 'index.html'));
+            let html = fs.readFileSync(
+                path.join(__dirname, 'public', 'index.html'),
+                'utf8',
+            );
+
+            // Add cache busting for CSS and JS
+            const timestamp = Date.now();
+            html = html.replace(
+                'href="/styles.css"',
+                `href="/styles.css?v=${timestamp}"`,
+            );
+            html = html.replace('src="/app.js"', `src="/app.js?v=${timestamp}`);
+
+            // Inject hot reload script in dev mode
+            if (isDev) {
+                const hotReloadScript = `
+                <script>
+                    (function() {
+                        const socket = io();
+                        socket.on('reload', function() {
+                            console.log('🔄 Reloading page...');
+                            // Force hard reload with cache bypass
+                            caches.keys().then(keys => keys.forEach(key => caches.delete(key)));
+                            setTimeout(() => {
+                                window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
+                            }, 100);
+                        });
+                        console.log('🔥 Hot reload active');
+                    })();
+                </script>
+                `;
+                html = html.replace('</body>', hotReloadScript + '</body>');
+                
+                // Inject critical layout CSS to override any cached styles
+                const criticalCSS = `
+                <style id="critical-layout-fix">
+                    /* CRITICAL LAYOUT FIX - OVERRIDES CACHED STYLES */
+                    html { width: 100% !important; height: 100% !important; overflow: hidden !important; }
+                    body { width: 100vw !important; height: 100vh !important; overflow: hidden !important; }
+                    #app { width: 100vw !important; overflow: hidden !important; }
+                    .main-app { 
+                        display: flex !important; 
+                        width: 100vw !important; 
+                        max-width: 100vw !important; 
+                        height: 100vh !important;
+                        overflow: hidden !important;
+                    }
+                    .sidebar { 
+                        width: 400px !important; 
+                        min-width: 400px !important; 
+                        max-width: 400px !important;
+                        flex: 0 0 400px !important;
+                    }
+                    .chat-area { 
+                        flex: 1 1 0 !important;
+                        width: 0 !important;
+                        min-width: 0 !important;
+                        overflow: hidden !important;
+                    }
+                    .messages-area { width: 100% !important; }
+                    .message { width: 100% !important; }
+                </style>
+                `;
+                html = html.replace('</head>', criticalCSS + '</head>');
+            }
+
+            res.send(html);
         });
 
         // API endpoint to get chat history
@@ -281,7 +343,7 @@ class WhatsAppAIClient {
                 this.clearCache(type);
                 res.json({
                     success: true,
-                    message: `Cache cleared for ${type || 'all'}`,
+                    message: `Cache cleared for ${type || 'all'}`
                 });
             } catch (error) {
                 console.error('Error clearing cache:', error);
@@ -298,6 +360,31 @@ class WhatsAppAIClient {
             } catch (error) {
                 console.error('Error getting contact groups:', error);
                 res.status(500).json({ error: 'Failed to get contact groups' });
+            }
+        });
+
+        // API endpoint to get chat details
+        this.app.get('/api/chat-details/:chatId', async (req, res) => {
+            try {
+                const chatId = req.params.chatId;
+                const chat = await this.client.getChatById(chatId);
+                const messages = await chat.fetchMessages({ limit: 1000 });
+                
+                const chatDetails = {
+                    id: chat.id._serialized,
+                    name: chat.name || 'Unknown',
+                    number: chat.id.user,
+                    isGroup: chat.isGroup,
+                    participants: chat.isGroup ? chat.participants.length : null,
+                    messageCount: messages.length,
+                    lastSeen: chat.contact?.lastSeen || null,
+                    sharedChats: [], // Can be populated if needed
+                };
+                
+                res.json(chatDetails);
+            } catch (error) {
+                console.error('Error getting chat details:', error);
+                res.status(500).json({ error: 'Failed to get chat details' });
             }
         });
     }
@@ -327,6 +414,44 @@ class WhatsAppAIClient {
                 }
             });
         });
+    }
+
+    setupHotReload() {
+        try {
+            const chokidar = require('chokidar');
+
+            // Watch files for changes
+            const watcher = chokidar.watch(
+                [
+                    'public/**/*.js',
+                    'public/**/*.css',
+                    'public/**/*.html',
+                ],
+                {
+                    ignored: /(^|[/\\])\../, // ignore dotfiles
+                    persistent: true,
+                    ignoreInitial: true,
+                },
+            );
+
+            watcher.on('change', (filePath) => {
+                console.log(`\x1b[36m📝 File changed: ${filePath}\x1b[0m`);
+                console.log('\x1b[33m🔄 Reloading clients...\x1b[0m');
+
+                // Notify all connected clients to reload
+                this.io.emit('reload');
+            });
+
+            watcher.on('error', (error) => {
+                console.error('Watcher error:', error);
+            });
+
+            console.log('👀 Watching: public/**/*.{js,css,html}');
+        } catch (error) {
+            console.warn(
+                '⚠️  Hot reload setup failed. Install chokidar: npm install chokidar',
+            );
+        }
     }
 
     async initializeAI() {

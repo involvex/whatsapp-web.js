@@ -6,6 +6,7 @@ class WhatsAppAIApp {
         this.chats = new Map();
         this.messages = new Map();
         this.isConnected = false;
+        this.pinnedChats = new Set(JSON.parse(localStorage.getItem('pinnedChats') || '[]'));
 
         this.initializeApp();
     }
@@ -48,6 +49,13 @@ class WhatsAppAIApp {
         });
 
         sendBtn.addEventListener('click', () => this.sendMessage());
+
+        // Back to chats button (mobile)
+        const backToChatsBtn = document.getElementById('back-to-chats');
+        backToChatsBtn.addEventListener('click', () => {
+            const chatArea = document.querySelector('.chat-area');
+            chatArea.classList.remove('active');
+        });
 
         // AI modal
         const aiModal = document.getElementById('ai-modal');
@@ -247,7 +255,17 @@ class WhatsAppAIApp {
     }
 
     connectToServer() {
-        this.socket = io();
+        if (typeof io === 'undefined') {
+            console.error('Socket.io client library is not loaded.');
+            this.updateStatus('Connection Error');
+            return;
+        }
+        if (typeof io !== 'function') {
+            console.error('Socket.io client library is not loaded or "io" is not a function.');
+            this.updateStatus('Connection Error');
+            return;
+        }
+        this.socket = window.io();
 
         this.socket.on('connect', () => {
             console.log('Connected to server');
@@ -339,15 +357,6 @@ class WhatsAppAIApp {
         document.getElementById('main-app').classList.remove('hidden');
     }
 
-    async loadChats() {
-        try {
-            // This would typically be an API call to get chats
-            // For now, we'll simulate with the chat history
-            this.renderChatList();
-        } catch (error) {
-            console.error('Error loading chats:', error);
-        }
-    }
 
     renderChatList(chats = []) {
         const chatList = document.getElementById('chat-list');
@@ -376,6 +385,12 @@ class WhatsAppAIApp {
         chatItem.className = 'chat-item';
         chatItem.dataset.chatId = chat.id;
 
+        // Check if chat is pinned
+        const isPinned = this.pinnedChats.has(chat.id);
+        if (isPinned) {
+            chatItem.classList.add('pinned');
+        }
+
         // Get last message preview
         const messagePreview = this.getLastMessagePreview(chat);
 
@@ -394,6 +409,9 @@ class WhatsAppAIApp {
                 <div class="chat-preview ${chat.unreadCount > 0 ? 'unread-message' : ''}">${this.escapeHtml(messagePreview)}</div>
             </div>
             <div class="chat-meta">
+                <button class="pin-btn ${isPinned ? 'pinned' : ''}" data-chat-id="${chat.id}" title="${isPinned ? 'Unpin' : 'Pin'} chat">
+                    <i class="fas fa-thumbtack"></i>
+                </button>
                 <div class="chat-time ${chat.unreadCount > 0 ? 'unread-time' : ''}">${this.formatTime(timestamp)}</div>
                 ${chat.unreadCount > 0 ? `<div class="unread-badge">${chat.unreadCount}</div>` : ''}
             </div>
@@ -404,11 +422,28 @@ class WhatsAppAIApp {
             chatItem.classList.add('unread');
         }
 
+        // Pin button click handler
+        const pinBtn = chatItem.querySelector('.pin-btn');
+        pinBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.togglePinChat(chat.id);
+        });
+
         chatItem.addEventListener('click', () => {
             this.selectChat(chat.id);
         });
 
-        chatList.appendChild(chatItem);
+        // Insert pinned chats at the top
+        if (isPinned) {
+            const firstUnpinned = chatList.querySelector('.chat-item:not(.pinned)');
+            if (firstUnpinned) {
+                chatList.insertBefore(chatItem, firstUnpinned);
+            } else {
+                chatList.appendChild(chatItem);
+            }
+        } else {
+            chatList.appendChild(chatItem);
+        }
     }
 
     selectChat(chatId) {
@@ -436,6 +471,12 @@ class WhatsAppAIApp {
         const sendBtn = document.getElementById('send-btn');
         messageInput.disabled = false;
         sendBtn.disabled = messageInput.value.trim().length === 0;
+
+        // Show chat area on mobile
+        if (window.innerWidth <= 768) {
+            const chatArea = document.querySelector('.chat-area');
+            chatArea.classList.add('active');
+        }
     }
 
     async loadChatMessages(chatId) {
@@ -587,7 +628,7 @@ class WhatsAppAIApp {
                 },
                 body: JSON.stringify({
                     chatId: this.currentChatId,
-                    message: message,
+                    message: text,
                 }),
             });
 
@@ -622,7 +663,7 @@ class WhatsAppAIApp {
         }
     }
 
-    showAIModal(responses, originalMessage) {
+    showAIModal(responses) {
         const modal = document.getElementById('ai-modal');
         const responsesContainer = document.getElementById('ai-responses');
 
@@ -692,9 +733,17 @@ class WhatsAppAIApp {
 
     updateChatHeader(chatId) {
         const chat = this.chats.get(chatId);
+        const chatNameEl = document.getElementById('chat-name');
+        const chatStatusEl = document.getElementById('chat-status');
+        
         if (chat) {
-            document.getElementById('chat-name').textContent = chat.name;
-            document.getElementById('chat-status').textContent = 'Online';
+            chatNameEl.textContent = chat.name;
+            // Show actual status instead of always "Online"
+            chatStatusEl.textContent = this.getChatStatus(chat);
+            
+            // Make chat name clickable to show details
+            chatNameEl.style.cursor = 'pointer';
+            chatNameEl.onclick = () => this.showChatDetails(chatId);
         } else {
             // Try to find chat in the current chat list
             const chatItem = document.querySelector(
@@ -703,9 +752,149 @@ class WhatsAppAIApp {
             if (chatItem) {
                 const chatName =
                     chatItem.querySelector('.chat-name').textContent;
-                document.getElementById('chat-name').textContent = chatName;
-                document.getElementById('chat-status').textContent = 'Online';
+                chatNameEl.textContent = chatName;
+                chatStatusEl.textContent = 'Click name for details';
+                chatNameEl.style.cursor = 'pointer';
+                chatNameEl.onclick = () => this.showChatDetails(chatId);
             }
+        }
+    }
+
+    getChatStatus(chat) {
+        // Don't show everyone as online - show last seen or typing status
+        if (chat.isGroup) {
+            return `${chat.participants || 0} participants`;
+        }
+        
+        if (chat.isTyping) {
+            return 'typing...';
+        }
+        
+        if (chat.lastSeen) {
+            const lastSeenTime = new Date(chat.lastSeen * 1000);
+            const now = new Date();
+            const diff = now - lastSeenTime;
+            
+            // Only show online if very recent (within 2 minutes)
+            if (diff < 120000) {
+                return 'Online';
+            } else if (diff < 3600000) { // Within 1 hour
+                return `Last seen ${Math.floor(diff / 60000)}m ago`;
+            } else if (diff < 86400000) { // Within 24 hours
+                return `Last seen ${Math.floor(diff / 3600000)}h ago`;
+            } else {
+                return `Last seen ${lastSeenTime.toLocaleDateString()}`;
+            }
+        }
+        
+        return 'Click name for details';
+    }
+
+    togglePinChat(chatId) {
+        if (this.pinnedChats.has(chatId)) {
+            this.pinnedChats.delete(chatId);
+        } else {
+            this.pinnedChats.add(chatId);
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('pinnedChats', JSON.stringify([...this.pinnedChats]));
+        
+        // Refresh chat list to reorder
+        this.refreshChats();
+    }
+
+    async showChatDetails(chatId) {
+        try {
+            const response = await fetch(`/api/chat-details/${chatId}`);
+            const chatDetails = await response.json();
+            
+            // Create modal for chat details
+            const modal = document.createElement('div');
+            modal.className = 'chat-details-modal';
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.8);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+            
+            modal.innerHTML = `
+                <div style="background: #2a3942; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <h2 style="color: #e9edef; margin: 0;">Chat Details</h2>
+                        <button class="close-btn" style="background: #3b4a54; border: none; color: #e9edef; width: 32px; height: 32px; border-radius: 50%; cursor: pointer;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    
+                    <div style="text-align: center; margin-bottom: 2rem;">
+                        <div style="width: 100px; height: 100px; background: #25d366; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 2.5rem; color: white; margin-bottom: 1rem;">
+                            <i class="fas ${chatDetails.isGroup ? 'fa-users' : 'fa-user'}"></i>
+                        </div>
+                        <h3 style="color: #e9edef; margin: 0.5rem 0;">${chatDetails.name || 'Unknown'}</h3>
+                        <p style="color: #8696a0; font-size: 0.9rem;">${chatDetails.number || chatId}</p>
+                    </div>
+                    
+                    <div style="background: #202c33; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                        <h4 style="color: #e9edef; margin: 0 0 1rem 0;">Information</h4>
+                        <div style="display: grid; gap: 0.75rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #8696a0;">Type:</span>
+                                <span style="color: #e9edef;">${chatDetails.isGroup ? 'Group' : 'Contact'}</span>
+                            </div>
+                            ${chatDetails.participants ? `
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #8696a0;">Participants:</span>
+                                    <span style="color: #e9edef;">${chatDetails.participants}</span>
+                                </div>
+                            ` : ''}
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #8696a0;">Messages:</span>
+                                <span style="color: #e9edef;">${chatDetails.messageCount || 0}</span>
+                            </div>
+                            ${chatDetails.sharedChats && chatDetails.sharedChats.length > 0 ? `
+                                <div>
+                                    <span style="color: #8696a0; display: block; margin-bottom: 0.5rem;">Shared Chats:</span>
+                                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                        ${chatDetails.sharedChats.map(chat => `
+                                            <span style="color: #e9edef; padding: 0.25rem 0.5rem; background: #3b4a54; border-radius: 4px;">${chat.name}</span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn-primary" onclick="window.open('tel:${chatDetails.number}')" style="flex: 1; background: #25d366; color: white; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer;">
+                            <i class="fas fa-phone"></i> Call
+                        </button>
+                        <button class="btn-secondary" style="flex: 1; background: #3b4a54; color: #e9edef; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer;">
+                            <i class="fas fa-search"></i> Search Messages
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Close modal handlers
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal || e.target.closest('.close-btn')) {
+                    document.body.removeChild(modal);
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error loading chat details:', error);
+            this.showNotification('Failed to load chat details', 'error');
         }
     }
 
@@ -749,22 +938,6 @@ class WhatsAppAIApp {
         }
     }
 
-    async loadContacts() {
-        if (this.isConnected) {
-            try {
-                const response = await fetch('/api/contacts');
-                const contacts = await response.json();
-                this.renderContactsList(contacts);
-                this.showNotification(
-                    `Loaded ${contacts.length} contacts`,
-                    'success',
-                );
-            } catch (error) {
-                console.error('Error loading contacts:', error);
-                this.showNotification('Failed to load contacts', 'error');
-            }
-        }
-    }
 
     renderContactsList(contacts) {
         const contactsList = document.getElementById('contacts-list');
@@ -1131,7 +1304,7 @@ class WhatsAppAIApp {
         }
     }
 
-    showNotification(title, body, icon = null) {
+    showBrowserNotification(title, body, icon = null) {
         if ('Notification' in window && Notification.permission === 'granted') {
             const notification = new Notification(title, {
                 body: body,
@@ -1155,7 +1328,7 @@ class WhatsAppAIApp {
         }
     }
 
-    handleNewMessage(message) {
+    handleNewMessageNotification(message) {
         // Show notification for new messages (not from current user)
         if (!message.fromMe && this.currentChatId !== message.chatId) {
             const chatName =
@@ -1167,7 +1340,7 @@ class WhatsAppAIApp {
                     : message.body
                 : 'New message';
 
-            this.showNotification(
+            this.showBrowserNotification(
                 `${senderName} in ${chatName}`,
                 messagePreview,
             );
@@ -1863,7 +2036,6 @@ class WhatsAppAIApp {
     // AI Prompts functionality
     toggleAIPrompts() {
         const container = document.getElementById('ai-prompts-container');
-        const btn = document.getElementById('ai-prompts-btn');
 
         if (container.style.display === 'none') {
             this.showAIPrompts();
@@ -1911,15 +2083,19 @@ class WhatsAppAIApp {
             const detectedLanguage = this.detectLanguage(messages);
             console.log('Detected chat language:', detectedLanguage);
 
-            // Generate AI prompts based on chat history and language
+            // Limit context to prevent payload too large error
+            // Only use last 5 messages and truncate each message to 100 characters
             const context = messages
-                .slice(-10)
-                .map((msg) => `${msg.fromMe ? 'You' : 'Other'}: ${msg.body}`)
+                .slice(-5)
+                .map((msg) => {
+                    const body = msg.body ? msg.body.substring(0, 100) : '';
+                    return `${msg.fromMe ? 'You' : 'Other'}: ${body}`;
+                })
                 .join('\n');
 
             const promptRequest = {
                 chatId: this.currentChatId,
-                message: `Generate 5 helpful response suggestions in ${detectedLanguage} based on this conversation:`,
+                message: `Generate 5 helpful response suggestions in ${detectedLanguage}`,
                 context: context,
                 language: detectedLanguage,
             };
@@ -1929,6 +2105,12 @@ class WhatsAppAIApp {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(promptRequest),
             });
+
+            if (!aiResponse.ok) {
+                console.error('AI response error:', aiResponse.status, aiResponse.statusText);
+                this.showDefaultPrompts(detectedLanguage);
+                return;
+            }
 
             const data = await aiResponse.json();
 

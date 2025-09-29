@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Layout Debug - WhatsApp Web</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            background: #111;
+            color: #0f0;
+        }
+        .test-container {
+            display: flex;
+            height: 400px;
+            border: 2px solid #0f0;
+            margin: 20px 0;
+        }
+        .test-sidebar {
+            width: 400px;
+            min-width: 400px;
+            max-width: 400px;
+            flex: 0 0 400px;
+            background: #2a3942;
+            border-right: 2px solid #f00;
+        }
+        .test-chat-area {
+            flex: 1 1 0;
+            width: 0;
+            min-width: 0;
+            background: #0b141a;
+            border: 2px solid #00f;
+        }
+        .info {
+            background: #222;
+            padding: 10px;
+            margin: 10px 0;
+            border-left: 3px solid #0f0;
+        }
+        .error {
+            background: #400;
+            border-left: 3px solid #f00;
+        }
+        .success {
+            background: #040;
+            border-left: 3px solid #0f0;
+        }
+        button {
+            background: #25d366;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #1fa855;
+        }
+        pre {
+            background: #000;
+            padding: 10px;
+            overflow-x: auto;
+        }
+        .test-content {
+            padding: 20px;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 WhatsApp Web Layout Debugger</h1>
+    
+    <div class="info">
+        <strong>Window Size:</strong> <span id="window-size"></span><br>
+        <strong>Screen Resolution:</strong> <span id="screen-size"></span>
+    </div>
+
+    <h2>Test Layout (should be: sidebar 400px + chat fills rest)</h2>
+    <div class="test-container">
+        <div class="test-sidebar">
+            <div class="test-content">
+                <strong>Sidebar</strong><br>
+                Width: <span id="test-sidebar-width"></span>
+            </div>
+        </div>
+        <div class="test-chat-area">
+            <div class="test-content">
+                <strong>Chat Area</strong><br>
+                Width: <span id="test-chat-area-width"></span>
+            </div>
+        </div>
+    </div>
+
+    <div id="result"></div>
+
+    <h2>Actions</h2>
+    <button onclick="checkMainApp()">Check Main App Layout</button>
+    <button onclick="clearAllCache()">Clear All Caches</button>
+    <button onclick="checkStyles()">Check Loaded Styles</button>
+    <button onclick="window.location.href='/'">Go to Main App</button>
+
+    <h2>Live Diagnostic Output</h2>
+    <pre id="output"></pre>
+
+    <script>
+        function log(msg, isError = false) {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = isError ? '❌' : '✅';
+            output.textContent += `[${timestamp}] ${prefix} ${msg}\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function updateSizes() {
+            document.getElementById('window-size').textContent = 
+                `${window.innerWidth}px × ${window.innerHeight}px`;
+            document.getElementById('screen-size').textContent = 
+                `${screen.width}px × ${screen.height}px`;
+            
+            const testSidebar = document.querySelector('.test-sidebar');
+            const testChatArea = document.querySelector('.test-chat-area');
+            
+            document.getElementById('test-sidebar-width').textContent = 
+                `${testSidebar.offsetWidth}px`;
+            document.getElementById('test-chat-area-width').textContent = 
+                `${testChatArea.offsetWidth}px`;
+            
+            const total = testSidebar.offsetWidth + testChatArea.offsetWidth;
+            const expected = window.innerWidth - 80; // minus body padding
+            
+            const result = document.getElementById('result');
+            if (Math.abs(total - expected) < 50) {
+                result.className = 'info success';
+                result.innerHTML = `<strong>✅ TEST LAYOUT WORKS!</strong><br>
+                    Sidebar: ${testSidebar.offsetWidth}px<br>
+                    Chat Area: ${testChatArea.offsetWidth}px<br>
+                    Total: ${total}px (Expected: ~${expected}px)`;
+            } else {
+                result.className = 'info error';
+                result.innerHTML = `<strong>❌ TEST LAYOUT BROKEN!</strong><br>
+                    Sidebar: ${testSidebar.offsetWidth}px<br>
+                    Chat Area: ${testChatArea.offsetWidth}px<br>
+                    Total: ${total}px (Expected: ~${expected}px)<br>
+                    Missing: ${expected - total}px`;
+            }
+        }
+
+        function checkMainApp() {
+            log('Opening main app in diagnostic mode...');
+            const mainAppWindow = window.open('/', '_blank');
+            
+            setTimeout(() => {
+                try {
+                    const doc = mainAppWindow.document;
+                    const sidebar = doc.querySelector('.sidebar');
+                    const chatArea = doc.querySelector('.chat-area');
+                    const mainApp = doc.querySelector('.main-app');
+                    
+                    if (!sidebar || !chatArea) {
+                        log('Main app not fully loaded yet. Wait and try again.', true);
+                        return;
+                    }
+                    
+                    log(`Main App Width: ${mainApp.offsetWidth}px`);
+                    log(`Sidebar Width: ${sidebar.offsetWidth}px`);
+                    log(`Chat Area Width: ${chatArea.offsetWidth}px`);
+                    log(`Total: ${sidebar.offsetWidth + chatArea.offsetWidth}px`);
+                    
+                    const expected = mainAppWindow.innerWidth;
+                    const actual = sidebar.offsetWidth + chatArea.offsetWidth;
+                    
+                    if (Math.abs(expected - actual) < 50) {
+                        log(`✅ MAIN APP LAYOUT IS CORRECT!`);
+                    } else {
+                        log(`❌ MAIN APP LAYOUT IS BROKEN! Missing ${expected - actual}px`, true);
+                    }
+                } catch (e) {
+                    log(`Error checking main app: ${e.message}. Open manually.`, true);
+                }
+            }, 2000);
+        }
+
+        async function clearAllCache() {
+            log('Clearing browser caches...');
+            
+            // Clear Cache API
+            if ('caches' in window) {
+                const keys = await caches.keys();
+                for (const key of keys) {
+                    await caches.delete(key);
+                    log(`Deleted cache: ${key}`);
+                }
+            }
+            
+            // Clear localStorage
+            const lsCount = localStorage.length;
+            localStorage.clear();
+            log(`Cleared ${lsCount} localStorage items`);
+            
+            // Clear sessionStorage
+            const ssCount = sessionStorage.length;
+            sessionStorage.clear();
+            log(`Cleared ${ssCount} sessionStorage items`);
+            
+            log('✅ All caches cleared! Now do Ctrl+Shift+R');
+        }
+
+        function checkStyles() {
+            log('Checking loaded stylesheets...');
+            const sheets = document.styleSheets;
+            log(`Found ${sheets.length} stylesheets`);
+            
+            for (let i = 0; i < sheets.length; i++) {
+                const sheet = sheets[i];
+                log(`Sheet ${i + 1}: ${sheet.href || 'inline'}`);
+            }
+            
+            // Check if critical styles exist on main page
+            fetch('/')
+                .then(r => r.text())
+                .then(html => {
+                    if (html.includes('critical-layout-fix')) {
+                        log('✅ Critical CSS injection found in HTML');
+                    } else {
+                        log('❌ Critical CSS injection NOT found!', true);
+                    }
+                    
+                    if (html.includes('Hot reload active')) {
+                        log('✅ Hot reload script found');
+                    } else {
+                        log('⚠️ Hot reload script not found (may not be in dev mode)');
+                    }
+                })
+                .catch(e => log(`Error fetching HTML: ${e}`, true));
+        }
+
+        // Run diagnostics on load
+        window.addEventListener('load', () => {
+            updateSizes();
+            log('Debugger loaded successfully');
+            log(`Running in: ${navigator.userAgent}`);
+        });
+
+        window.addEventListener('resize', updateSizes);
+    </script>
+</body>
+</html>

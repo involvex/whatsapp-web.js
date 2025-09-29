@@ -15,6 +15,7 @@ yarn-error.log*
 .wwebjs_auth/
 .wwebjs_cache/
 
+.env.local
 .env
 tools/
 tests/
