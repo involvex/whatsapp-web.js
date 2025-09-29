@@ -3,6 +3,10 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="theme-color" content="#111b21" />
+        <meta name="description" content="WhatsApp AI Web - Send and receive messages with AI assistance" />
         <title>WhatsApp AI Web</title>
         <link rel="stylesheet" href="/styles.css" />
         <link
@@ -64,38 +68,51 @@
                         <div class="sidebar-actions">
                             <button
                                 class="action-btn"
+                                id="theme-toggle-btn"
+                                title="Toggle Dark/Light Mode"
+                                aria-label="Toggle Dark/Light Mode"
+                            >
+                                <i class="fas fa-moon" aria-hidden="true"></i>
+                            </button>
+                            <button
+                                class="action-btn"
                                 id="refresh-chats-btn"
                                 title="Refresh Chats"
+                                aria-label="Refresh Chats"
                             >
-                                <i class="fas fa-sync-alt"></i>
+                                <i class="fas fa-sync-alt" aria-hidden="true"></i>
                             </button>
                             <button
                                 class="action-btn"
                                 id="cache-btn"
                                 title="Cache Management"
+                                aria-label="Cache Management"
                             >
-                                <i class="fas fa-database"></i>
+                                <i class="fas fa-database" aria-hidden="true"></i>
                             </button>
                             <button
                                 class="action-btn"
                                 id="export-import-btn"
                                 title="Export & Import"
+                                aria-label="Export & Import"
                             >
-                                <i class="fas fa-download"></i>
+                                <i class="fas fa-download" aria-hidden="true"></i>
                             </button>
                             <button
                                 class="action-btn"
                                 id="new-chat-btn"
                                 title="New Chat"
+                                aria-label="New Chat"
                             >
-                                <i class="fas fa-plus"></i>
+                                <i class="fas fa-plus" aria-hidden="true"></i>
                             </button>
                             <button
                                 class="action-btn"
                                 id="menu-btn"
                                 title="Menu"
+                                aria-label="Menu"
                             >
-                                <i class="fas fa-ellipsis-v"></i>
+                                <i class="fas fa-ellipsis-v" aria-hidden="true"></i>
                             </button>
                         </div>
                     </div>
@@ -103,35 +120,78 @@
                     <!-- Search -->
                     <div class="search-container">
                         <div class="search-box">
-                            <i class="fas fa-search"></i>
+                            <label for="search-input" class="sr-only">Search or start new chat</label>
+                            <i class="fas fa-search" aria-hidden="true"></i>
                             <input
                                 type="text"
                                 id="search-input"
                                 placeholder="Search or start new chat"
+                                aria-label="Search or start new chat"
                             />
+                        </div>
+                        <div class="sort-options">
+                            <button class="sort-btn active" id="sort-recent" title="Sort by Recent">
+                                <i class="fas fa-clock"></i>
+                                <span>Recent</span>
+                            </button>
+                            <button class="sort-btn" id="sort-unread" title="Sort by Unread">
+                                <i class="fas fa-envelope"></i>
+                                <span>Unread</span>
+                            </button>
+                            <button class="sort-btn" id="sort-name" title="Sort by Name">
+                                <i class="fas fa-sort-alpha-down"></i>
+                                <span>Name</span>
+                            </button>
                         </div>
                     </div>
 
                     <!-- Tabs -->
-                    <div class="tabs-container">
-                        <button class="tab-btn active" id="chats-tab">
-                            <i class="fas fa-comments"></i> Chats
+                    <div class="tabs-container" role="tablist">
+                        <button 
+                            class="tab-btn active" 
+                            id="chats-tab" 
+                            role="tab" 
+                            aria-selected="true" 
+                            aria-controls="chat-list"
+                        >
+                            <i class="fas fa-comments" aria-hidden="true"></i> Chats
                         </button>
-                        <button class="tab-btn" id="contacts-tab">
-                            <i class="fas fa-users"></i> Contacts
+                        <button 
+                            class="tab-btn" 
+                            id="contacts-tab" 
+                            role="tab" 
+                            aria-selected="false" 
+                            aria-controls="contacts-list"
+                        >
+                            <i class="fas fa-users" aria-hidden="true"></i> Contacts
                         </button>
                     </div>
 
                     <!-- Chat List -->
-                    <div class="chat-list" id="chat-list">
+                    <div 
+                        class="chat-list" 
+                        id="chat-list" 
+                        role="tabpanel" 
+                        aria-labelledby="chats-tab"
+                    >
                         <!-- Chats will be populated here -->
                     </div>
 
                     <!-- Contacts List -->
-                    <div class="contacts-list hidden" id="contacts-list">
+                    <div 
+                        class="contacts-list hidden" 
+                        id="contacts-list" 
+                        role="tabpanel" 
+                        aria-labelledby="contacts-tab"
+                        aria-hidden="true"
+                    >
                         <div class="contacts-header">
-                            <button class="btn-secondary" id="sync-google-btn">
-                                <i class="fab fa-google"></i> Sync Google
+                            <button 
+                                class="btn-secondary" 
+                                id="sync-google-btn"
+                                aria-label="Sync Google Contacts"
+                            >
+                                <i class="fab fa-google" aria-hidden="true"></i> Sync Google
                                 Contacts
                             </button>
                         </div>
@@ -226,6 +286,13 @@
                         <div class="chat-actions">
                             <button
                                 class="action-btn"
+                                id="search-chat-btn"
+                                title="Search in chat"
+                            >
+                                <i class="fas fa-search"></i>
+                            </button>
+                            <button
+                                class="action-btn"
                                 id="video-call-btn"
                                 title="Video Call"
                             >
@@ -248,15 +315,17 @@
                         </div>
                     </div>
 
-                    <!-- Messages Area -->
-                    <div class="messages-area" id="messages-area">
-                        <div class="welcome-message">
-                            <div class="welcome-content">
-                                <i class="fab fa-whatsapp"></i>
-                                <h2>WhatsApp AI Web</h2>
-                                <p>
-                                    Send and receive messages with AI assistance
-                                </p>
+                    <div class="chat-content">
+                        <!-- Messages Area -->
+                        <div class="messages-area" id="messages-area">
+                            <div class="welcome-message">
+                                <div class="welcome-content">
+                                    <i class="fab fa-whatsapp"></i>
+                                    <h2>WhatsApp AI Web</h2>
+                                    <p>
+                                        Send and receive messages with AI assistance
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -277,8 +346,6 @@
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
-                            </button>
-                        </div>
                         <div class="ai-prompts-list" id="ai-prompts-list">
                             <!-- AI-generated prompts will be inserted here -->
                         </div>
@@ -286,46 +353,68 @@
 
                     <!-- Message Input -->
                     <div class="message-input-container">
-                        <div class="message-input">
+                        <div class="message-input" role="group" aria-label="Message composition">
                             <button
                                 class="input-btn"
                                 id="attach-btn"
                                 title="Attach"
+                                aria-label="Attach file"
                             >
-                                <i class="fas fa-paperclip"></i>
+                                <i class="fas fa-paperclip" aria-hidden="true"></i>
                             </button>
                             <button
                                 class="input-btn"
                                 id="ai-prompts-btn"
                                 title="AI Suggestions"
+                                aria-label="Show AI suggestions"
+                                aria-expanded="false"
+                                aria-controls="ai-prompts-container"
                             >
-                                <i class="fas fa-magic"></i>
+                                <i class="fas fa-magic" aria-hidden="true"></i>
                             </button>
                             <div class="input-wrapper">
+                                <label for="message-input" class="sr-only">Type a message</label>
                                 <input
                                     type="text"
                                     id="message-input"
                                     placeholder="Type a message"
                                     disabled
+                                    aria-label="Type a message"
                                 />
-                                <button
-                                    class="input-btn"
-                                    id="voice-btn"
-                                    title="Voice Message"
-                                >
-                                    <i class="fas fa-microphone"></i>
-                                </button>
                                 <button
                                     class="input-btn"
                                     id="emoji-btn"
                                     title="Emoji"
+                                    aria-label="Insert emoji"
+                                    aria-haspopup="true"
                                 >
-                                    <i class="fas fa-smile"></i>
+                                    <i class="fas fa-smile" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <button class="send-btn" id="send-btn" disabled title="Send">
-                                <span class="sr-only">Send</span>
-                                <i class="fas fa-paper-plane"></i>
+                            <button 
+                                class="input-btn"
+                                id="schedule-btn"
+                                title="Schedule Message"
+                                aria-label="Schedule message"
+                            >
+                                <i class="fas fa-clock" aria-hidden="true"></i>
+                            </button>
+                            <button 
+                                class="input-btn"
+                                id="voice-btn"
+                                title="Voice Message"
+                                aria-label="Record voice message"
+                            >
+                                <i class="fas fa-microphone" aria-hidden="true"></i>
+                            </button>
+                            <button 
+                                class="send-btn" 
+                                id="send-btn" 
+                                disabled 
+                                title="Send"
+                                aria-label="Send message"
+                            >
+                                <i class="fas fa-paper-plane" aria-hidden="true"></i>
                             </button>
                         </div>
                     </div>
@@ -373,6 +462,39 @@
                         <button class="voice-btn send" id="voice-send-btn">
                             <i class="fas fa-paper-plane"></i> Send
                         </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Schedule Message Modal -->
+            <div class="modal hidden" id="schedule-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Schedule Message</h3>
+                        <button class="close-modal-btn" id="close-schedule-modal">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label for="schedule-date">Date</label>
+                            <input type="date" id="schedule-date" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="schedule-time">Time</label>
+                            <input type="time" id="schedule-time" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="schedule-message">Message</label>
+                            <textarea id="schedule-message" class="form-input" rows="4" placeholder="Type your message here"></textarea>
+                        </div>
+                        <div class="scheduled-message-preview">
+                            <p>Your message will be sent at: <span id="scheduled-datetime-display"></span></p>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn cancel-btn" id="cancel-schedule-btn">Cancel</button>
+                        <button class="btn primary-btn" id="confirm-schedule-btn">Schedule</button>
                     </div>
                 </div>
             </div>

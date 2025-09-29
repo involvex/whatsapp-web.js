@@ -7,11 +7,15 @@ class WhatsAppAIApp {
         this.messages = new Map();
         this.isConnected = false;
         this.pinnedChats = new Set(JSON.parse(localStorage.getItem('pinnedChats') || '[]'));
+        this.darkMode = localStorage.getItem('darkMode') !== 'false'; // Default to dark mode
 
         this.initializeApp();
     }
 
     initializeApp() {
+        // Apply theme before anything else to avoid flash of wrong theme
+        this.applyTheme();
+        
         this.setupEventListeners();
         this.connectToServer();
         this.requestNotificationPermission();
@@ -30,8 +34,47 @@ class WhatsAppAIApp {
             }, 1000);
         });
     }
+    
+    // Theme management
+    applyTheme() {
+        if (this.darkMode) {
+            document.body.classList.remove('light-mode');
+            document.getElementById('theme-toggle-btn')?.querySelector('i')?.classList.replace('fa-sun', 'fa-moon');
+        } else {
+            document.body.classList.add('light-mode');
+            document.getElementById('theme-toggle-btn')?.querySelector('i')?.classList.replace('fa-moon', 'fa-sun');
+        }
+    }
+    
+    toggleTheme() {
+        this.darkMode = !this.darkMode;
+        localStorage.setItem('darkMode', this.darkMode);
+        this.applyTheme();
+        this.showNotification(`${this.darkMode ? 'Dark' : 'Light'} mode activated`, 'info');
+    }
 
     setupEventListeners() {
+        // Theme toggle
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        if (themeToggleBtn) {
+            themeToggleBtn.addEventListener('click', () => this.toggleTheme());
+        }
+        
+        // Sort buttons
+        const sortButtons = document.querySelectorAll('.sort-btn');
+        sortButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Remove active class from all buttons
+                sortButtons.forEach(b => b.classList.remove('active'));
+                
+                // Add active class to clicked button
+                btn.classList.add('active');
+                
+                // Sort and render chats
+                this.sortAndRenderChats();
+            });
+        });
+        
         // Message input
         const messageInput = document.getElementById('message-input');
         const sendBtn = document.getElementById('send-btn');
@@ -158,6 +201,21 @@ class WhatsAppAIApp {
         voiceSendBtn.addEventListener('click', () => {
             this.sendVoiceMessage();
         });
+        
+        // Schedule message button
+        const scheduleBtn = document.getElementById('schedule-btn');
+        scheduleBtn.addEventListener('click', () => {
+            this.showScheduleModal();
+        });
+        
+        // Setup schedule modal events
+        this.setupScheduleModal();
+        
+        // Initialize scheduled messages
+        this.scheduledMessages = this.loadScheduledMessages();
+        
+        // Start the scheduled message checker
+        this.startScheduledMessageChecker();
 
         // AI Prompts
         const aiPromptsBtn = document.getElementById('ai-prompts-btn');
@@ -325,6 +383,11 @@ class WhatsAppAIApp {
             console.log('Received chats:', chats.length);
             this.renderChatList(chats);
         });
+        
+        // Handle presence updates
+        this.socket.on('presence-update', (data) => {
+            this.updateContactPresence(data.id, data.isOnline);
+        });
     }
 
     handleStatusUpdate(status) {
@@ -399,14 +462,33 @@ class WhatsAppAIApp {
             ? chat.lastMessage.timestamp * 1000
             : chat.timestamp;
 
+        // Online status (only for individual chats, not groups)
+        const isOnline = !chat.isGroup && (chat.isOnline || false);
+        const presenceClass = isOnline ? 'online' : 'offline';
+        
+        // Get profile picture if available
+        const profilePic = chat.profilePicUrl || this.getDefaultProfilePic(chat.name || 'Unknown');
+        const hasCustomPic = !!chat.profilePicUrl;
+        
         chatItem.innerHTML = `
             <div class="chat-avatar">
-                <i class="fas ${chat.isGroup ? 'fa-users' : 'fa-user'}"></i>
+                ${chat.isGroup ? 
+                    `<div class="group-avatar">
+                        <i class="fas fa-users"></i>
+                    </div>` : 
+                    hasCustomPic ? 
+                        `<img src="${profilePic}" alt="${chat.name || 'Unknown'}" class="profile-pic" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 212 212\\'%3E%3Cpath fill=\\'%2325D366\\' d=\\'M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z\\'/%3E%3C/svg%3E';" />` : 
+                        `<div class="profile-pic-placeholder" style="background-color: ${profilePic}">${(chat.name || 'Unknown').charAt(0).toUpperCase()}</div>`
+                }
                 ${chat.unreadCount > 0 ? '<div class="unread-dot"></div>' : ''}
+                ${!chat.isGroup ? `<span class="presence-indicator ${presenceClass}"></span>` : ''}
             </div>
             <div class="chat-info">
                 <div class="chat-name ${chat.unreadCount > 0 ? 'unread-name' : ''}">${chat.name || 'Unknown'}</div>
-                <div class="chat-preview ${chat.unreadCount > 0 ? 'unread-message' : ''}">${this.escapeHtml(messagePreview)}</div>
+                <div class="chat-preview ${chat.unreadCount > 0 ? 'unread-message' : ''}">
+                    ${isOnline ? '<span class="online-text">online</span> • ' : ''}
+                    ${this.escapeHtml(messagePreview)}
+                </div>
             </div>
             <div class="chat-meta">
                 <button class="pin-btn ${isPinned ? 'pinned' : ''}" data-chat-id="${chat.id}" title="${isPinned ? 'Unpin' : 'Pin'} chat">
@@ -416,6 +498,12 @@ class WhatsAppAIApp {
                 ${chat.unreadCount > 0 ? `<div class="unread-badge">${chat.unreadCount}</div>` : ''}
             </div>
         `;
+        
+        // If we have a chat ID but no profile picture and it's not a group, try to fetch it
+        if (!chat.isGroup && chat.id && !chat.profilePicUrl) {
+            const contactId = chat.id.replace('@c.us', '');
+            this.fetchProfilePicture(contactId, chatItem.querySelector('.chat-avatar'));
+        }
 
         // Add unread styling
         if (chat.unreadCount > 0) {
@@ -447,6 +535,9 @@ class WhatsAppAIApp {
     }
 
     selectChat(chatId) {
+        const isNewChat = this.currentChatId !== chatId;
+        const previousChatId = this.currentChatId;
+        
         // Store current chat in localStorage
         localStorage.setItem('currentChatId', chatId);
 
@@ -455,9 +546,10 @@ class WhatsAppAIApp {
             item.classList.remove('active');
         });
 
-        document
-            .querySelector(`[data-chat-id="${chatId}"]`)
-            .classList.add('active');
+        const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
+        if (chatElement) {
+            chatElement.classList.add('active');
+        }
 
         this.currentChatId = chatId;
         this.loadChatMessages(chatId);
@@ -477,13 +569,155 @@ class WhatsAppAIApp {
             const chatArea = document.querySelector('.chat-area');
             chatArea.classList.add('active');
         }
+        
+        // Generate AI suggestions if this is a new chat selection
+        if (isNewChat) {
+            this.generateNewChatSuggestions(chatId, previousChatId);
+        }
+    }
+    
+    async generateNewChatSuggestions(chatId, previousChatId) {
+        try {
+            // Get chat info
+            const chatItem = document.querySelector(`[data-chat-id="${chatId}"]`);
+            if (!chatItem) return;
+            
+            const chatName = chatItem.querySelector('.chat-name')?.textContent || 'Unknown';
+            const isGroup = chatItem.querySelector('.chat-avatar i')?.classList.contains('fa-users') || false;
+            
+            // Don't generate suggestions for groups
+            if (isGroup) return;
+            
+            // Get chat history to check if this is a brand new chat
+            const chatHistory = this.messages.get(chatId) || [];
+            const isFirstInteraction = chatHistory.length === 0;
+            
+            // Generate appropriate suggestions
+            let suggestionsContext = '';
+            
+            if (isFirstInteraction) {
+                suggestionsContext = `This is your first conversation with ${chatName}. Generate appropriate greeting messages.`;
+            } else {
+                // Get the last few messages for context
+                const lastMessages = chatHistory.slice(-3);
+                const lastMessageTexts = lastMessages.map(m => m.body || '').filter(Boolean).join(' ');
+                suggestionsContext = `You're continuing a conversation with ${chatName}. Recent messages: ${lastMessageTexts}`;
+            }
+            
+            // Show AI prompts container with loading indicator
+            const aiPromptsContainer = document.getElementById('ai-prompts-container');
+            const aiPromptsList = document.getElementById('ai-prompts-list');
+            
+            aiPromptsList.innerHTML = '<div class="ai-prompt-loading">Generating suggestions...</div>';
+            aiPromptsContainer.classList.remove('hidden');
+            
+            // Generate suggestions
+            const suggestions = await this.generateAIResponses('', suggestionsContext);
+            
+            // Display suggestions as prompt buttons
+            aiPromptsList.innerHTML = '';
+            
+            suggestions.forEach(suggestion => {
+                const promptButton = document.createElement('button');
+                promptButton.className = 'ai-prompt-btn';
+                promptButton.textContent = this.truncateText(suggestion, 40);
+                promptButton.title = suggestion;
+                
+                promptButton.addEventListener('click', () => {
+                    document.getElementById('message-input').value = suggestion;
+                    aiPromptsContainer.classList.add('hidden');
+                });
+                
+                aiPromptsList.appendChild(promptButton);
+            });
+        } catch (error) {
+            console.error('Error generating new chat suggestions:', error);
+        }
+    }
+    
+    // Helper method to truncate text
+    truncateText(text, maxLength) {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength - 3) + '...';
+    }
+    
+    // Generate a color based on the name for profile picture placeholders
+    getDefaultProfilePic(name) {
+        // Generate a consistent color based on the name
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        
+        // Convert to a hex color with good contrast on dark background
+        const hue = Math.abs(hash % 360);
+        const saturation = 70 + Math.abs(hash % 30); // 70-100%
+        const lightness = 45 + Math.abs(hash % 10);  // 45-55%
+        
+        return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    }
+    
+    // Fetch profile picture from server
+    async fetchProfilePicture(contactId, avatarElement) {
+        try {
+            const response = await fetch(`/api/profile-pic/${contactId}`);
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            
+            if (data.profilePicUrl) {
+                // Update the avatar element
+                if (avatarElement) {
+                    avatarElement.innerHTML = `
+                        <img src="${data.profilePicUrl}" alt="Profile" class="profile-pic" 
+                            onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 212 212\\'%3E%3Cpath fill=\\'%2325D366\\' d=\\'M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z\\'/%3E%3C/svg%3E';" />
+                        ${avatarElement.querySelector('.presence-indicator')?.outerHTML || ''}
+                    `;
+                }
+                
+                // Store the profile picture URL
+                // For contacts
+                const contactItem = document.querySelector(`.contact-item[data-contact-id="${contactId}"]`);
+                if (contactItem) {
+                    const contact = this.contacts.find(c => c.id === contactId);
+                    if (contact) {
+                        contact.profilePicUrl = data.profilePicUrl;
+                    }
+                }
+                
+                // For chats
+                const chatItem = document.querySelector(`.chat-item[data-chat-id="${contactId}@c.us"]`);
+                if (chatItem) {
+                    const chat = this.chats.find(c => c.id === `${contactId}@c.us`);
+                    if (chat) {
+                        chat.profilePicUrl = data.profilePicUrl;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching profile picture:', error);
+        }
     }
 
     async loadChatMessages(chatId) {
         try {
             console.log(`Loading messages for chat: ${chatId}`);
             this.showLoadingState();
+            
+            // Check if we have cached messages for this chat
+            const cachedMessages = this.messages.get(chatId);
+            if (cachedMessages && cachedMessages.length > 0) {
+                console.log(`Using ${cachedMessages.length} cached messages for chat ${chatId}`);
+                // Render cached messages immediately
+                this.renderMessages(cachedMessages);
+                this.hideLoadingState();
+                
+                // Fetch latest messages in the background
+                this.fetchLatestMessages(chatId);
+                return;
+            }
 
+            // No cached messages, fetch all messages
             const response = await fetch(`/api/chat/${chatId}`);
             const messages = await response.json();
 
@@ -499,6 +733,46 @@ class WhatsAppAIApp {
             this.renderMessages([]);
             this.hideLoadingState();
             this.showNotification('Failed to load messages', 'error');
+        }
+    }
+    
+    async fetchLatestMessages(chatId) {
+        try {
+            // Fetch only messages since the latest message we have
+            const cachedMessages = this.messages.get(chatId) || [];
+            const latestTimestamp = cachedMessages.length > 0 
+                ? Math.max(...cachedMessages.map(m => m.timestamp)) 
+                : 0;
+            
+            const response = await fetch(`/api/chat/${chatId}?since=${latestTimestamp}`);
+            const newMessages = await response.json();
+            
+            if (newMessages.length > 0) {
+                console.log(`Fetched ${newMessages.length} new messages for chat ${chatId}`);
+                
+                // Merge new messages with cached messages
+                const updatedMessages = [...cachedMessages];
+                
+                // Add only messages we don't already have
+                const existingIds = new Set(cachedMessages.map(m => m.id._serialized || m.id));
+                for (const message of newMessages) {
+                    const messageId = message.id._serialized || message.id;
+                    if (!existingIds.has(messageId)) {
+                        updatedMessages.push(message);
+                    }
+                }
+                
+                // Sort by timestamp
+                updatedMessages.sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Update cache and render if this is still the active chat
+                this.messages.set(chatId, updatedMessages);
+                if (this.currentChatId === chatId) {
+                    this.renderMessages(updatedMessages);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching latest messages:', error);
         }
     }
 
@@ -518,36 +792,228 @@ class WhatsAppAIApp {
             `;
             return;
         }
+        
+        // Create a document fragment for better performance
+        const fragment = document.createDocumentFragment();
+        
+        // Use virtual scrolling if there are many messages
+        const MAX_VISIBLE_MESSAGES = 50;
+        const messagesToRender = messages.length > MAX_VISIBLE_MESSAGES
+            ? messages.slice(messages.length - MAX_VISIBLE_MESSAGES)
+            : messages;
+            
+        if (messages.length > MAX_VISIBLE_MESSAGES) {
+            // Add a "load more" button at the top
+            const loadMoreContainer = document.createElement('div');
+            loadMoreContainer.className = 'load-more-container';
+            loadMoreContainer.innerHTML = `
+                <button class="load-more-btn" id="load-more-btn">
+                    <i class="fas fa-arrow-up" aria-hidden="true"></i> Load ${messages.length - MAX_VISIBLE_MESSAGES} earlier messages
+                </button>
+            `;
+            
+            // Add event listener to load more button
+            loadMoreContainer.querySelector('#load-more-btn').addEventListener('click', () => {
+                this.loadMoreMessages(messages);
+            });
+            
+            fragment.appendChild(loadMoreContainer);
+        }
 
-        messages.forEach((message) => {
-            this.renderMessage(message);
+        // Render visible messages
+        messagesToRender.forEach((message) => {
+            const messageElement = this.createMessageElement(message);
+            fragment.appendChild(messageElement);
         });
+        
+        // Append all messages at once
+        messagesArea.appendChild(fragment);
 
         this.scrollToBottom();
+    }
+    
+    loadMoreMessages(allMessages) {
+        const messagesArea = document.getElementById('messages-area');
+        const currentScrollHeight = messagesArea.scrollHeight;
+        
+        // Remove the current load more button
+        const loadMoreContainer = messagesArea.querySelector('.load-more-container');
+        if (loadMoreContainer) {
+            loadMoreContainer.remove();
+        }
+        
+        // Get the current first message for reference
+        const firstMessage = messagesArea.querySelector('.message');
+        
+        // Create a new fragment
+        const fragment = document.createDocumentFragment();
+        
+        // Load 50 more messages
+        const currentCount = messagesArea.querySelectorAll('.message').length;
+        const startIndex = Math.max(0, allMessages.length - currentCount - 50);
+        const endIndex = allMessages.length - currentCount;
+        const additionalMessages = allMessages.slice(startIndex, endIndex);
+        
+        // Add a new load more button if needed
+        if (startIndex > 0) {
+            const loadMoreContainer = document.createElement('div');
+            loadMoreContainer.className = 'load-more-container';
+            loadMoreContainer.innerHTML = `
+                <button class="load-more-btn" id="load-more-btn">
+                    <i class="fas fa-arrow-up" aria-hidden="true"></i> Load ${startIndex} earlier messages
+                </button>
+            `;
+            
+            loadMoreContainer.querySelector('#load-more-btn').addEventListener('click', () => {
+                this.loadMoreMessages(allMessages);
+            });
+            
+            fragment.appendChild(loadMoreContainer);
+        }
+        
+        // Create elements for additional messages
+        additionalMessages.forEach(message => {
+            const messageElement = this.createMessageElement(message);
+            fragment.appendChild(messageElement);
+        });
+        
+        // Insert at the top
+        if (firstMessage) {
+            messagesArea.insertBefore(fragment, firstMessage);
+        } else {
+            messagesArea.appendChild(fragment);
+        }
+        
+        // Maintain scroll position
+        messagesArea.scrollTop = messagesArea.scrollHeight - currentScrollHeight;
+        
+        // Announce to screen readers
+        this.announceToScreenReader(`Loaded ${additionalMessages.length} earlier messages`);
+    }
+    
+    createMessageElement(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${message.fromMe ? 'sent' : 'received'}`;
+        messageDiv.setAttribute('data-message-id', message.id._serialized || message.id);
+
+        let messageContent = '';
+
+        // Check for voice messages by type or body content
+        if (
+            message.type === 'audio' ||
+            message.type === 'ptt' ||
+            (message.body && message.body.includes('voice'))
+        ) {
+            messageContent = this.renderVoiceMessage(message);
+        } else if (message.type === 'image' || message.type === 'video') {
+            messageContent = this.renderMediaMessage(message);
+        } else if (message.type === 'document') {
+            messageContent = this.renderDocumentMessage(message);
+        } else {
+            messageContent = `<div class="message-text">${this.escapeHtml(message.body)}</div>`;
+        }
+
+        // Add timestamp and status
+        const timestamp = this.formatTime(message.timestamp * 1000);
+        const status = this.getMessageStatusHtml(message);
+
+        messageDiv.innerHTML = `
+            <div class="message-bubble">
+                ${messageContent}
+                <div class="message-time">
+                    ${timestamp}
+                    ${status}
+                </div>
+            </div>
+        `;
+        
+        return messageDiv;
+    }
+    
+    getMessageStatusHtml(message) {
+        if (!message.fromMe) return '';
+        
+        // Determine message status
+        let statusClass = 'delivered';
+        let statusText = 'Delivered';
+        
+        if (message.isTemp) {
+            statusClass = 'pending';
+            statusText = 'Sending';
+        } else if (message.status === 'PENDING' || message.status === 'SENDING') {
+            statusClass = 'pending';
+            statusText = 'Sending';
+        } else if (message.status === 'SENT') {
+            statusClass = 'sent';
+            statusText = 'Sent';
+        } else if (message.status === 'DELIVERED') {
+            statusClass = 'delivered';
+            statusText = 'Delivered';
+        } else if (message.status === 'READ' || message.isRead) {
+            statusClass = 'read';
+            statusText = 'Read';
+        } else if (message.status === 'ERROR' || message.hasError) {
+            statusClass = 'failed';
+            statusText = 'Failed';
+        }
+        
+        return `<span class="message-status ${statusClass}" title="${statusText}" aria-label="Message ${statusText}"></span>`;
     }
 
     addMessageToChat(message) {
         const messagesArea = document.getElementById('messages-area');
-        const messageElement = document.createElement('div');
-        messageElement.className = `message ${message.fromMe ? 'sent' : 'received'} fade-in`;
-
+        
+        // Use the createMessageElement method for consistency
+        message.isTemp = true; // Mark as temporary to show pending status
+        const messageElement = this.createMessageElement(message);
+        messageElement.classList.add('fade-in');
+        
         if (message.isAI) {
             messageElement.classList.add('ai-message');
         }
-
-        messageElement.innerHTML = `
-            <div class="message-avatar">
-                <i class="fas fa-user"></i>
-            </div>
-            <div class="message-content">
-                ${message.isAI ? '<div class="ai-indicator">🤖 AI Assistant</div>' : ''}
-                <div class="message-text">${this.escapeHtml(message.body)}</div>
-                <div class="message-time">${this.formatTime(message.timestamp * 1000)}</div>
-            </div>
-        `;
+        
+        // Add a unique ID for easy updating later
+        const tempId = `temp_${Date.now()}`;
+        messageElement.setAttribute('id', tempId);
+        message.tempId = tempId;
 
         messagesArea.appendChild(messageElement);
         this.scrollToBottom();
+        
+        // Set up status updates
+        if (message.fromMe) {
+            // Simulate status changes for demo
+            setTimeout(() => this.updateMessageStatus(tempId, 'sent'), 500);
+            setTimeout(() => this.updateMessageStatus(tempId, 'delivered'), 2000);
+            
+            // Random chance of read receipt after 3-5 seconds
+            if (Math.random() > 0.5) {
+                setTimeout(() => this.updateMessageStatus(tempId, 'read'), 3000 + Math.random() * 2000);
+            }
+        }
+    }
+    
+    updateMessageStatus(messageId, status) {
+        const messageElement = document.getElementById(messageId);
+        if (!messageElement) return;
+        
+        const statusElement = messageElement.querySelector('.message-status');
+        if (!statusElement) return;
+        
+        // Update status class and aria attributes
+        statusElement.className = `message-status ${status}`;
+        
+        let statusText = 'Unknown';
+        switch(status) {
+        case 'pending': statusText = 'Sending'; break;
+        case 'sent': statusText = 'Sent'; break;
+        case 'delivered': statusText = 'Delivered'; break;
+        case 'read': statusText = 'Read'; break;
+        case 'failed': statusText = 'Failed'; break;
+        }
+        
+        statusElement.setAttribute('title', statusText);
+        statusElement.setAttribute('aria-label', `Message ${statusText}`);
     }
 
     handleNewMessage(data) {
@@ -592,9 +1058,12 @@ class WhatsAppAIApp {
             return;
         }
 
+        // Create a unique ID for this message
+        const tempId = `temp_${Date.now()}`;
+        
         // Add message to UI immediately
         const messageData = {
-            id: `temp_${Date.now()}`,
+            id: tempId,
             body: text || this.getMediaPreview(type, filename),
             from: this.currentChatId,
             fromMe: true,
@@ -602,6 +1071,8 @@ class WhatsAppAIApp {
             type: type,
             mediaData: mediaData,
             filename: filename,
+            status: 'PENDING',
+            isTemp: true
         };
 
         this.addMessageToChat(messageData);
@@ -629,20 +1100,67 @@ class WhatsAppAIApp {
                 body: JSON.stringify({
                     chatId: this.currentChatId,
                     message: text,
+                    tempId: tempId // Include temp ID for tracking
                 }),
             });
 
             if (!response.ok) {
                 throw new Error('Failed to send message');
             }
+            
+            const result = await response.json();
+            
+            // Update message status based on server response
+            if (result.success) {
+                // Update with server-generated ID and status
+                this.updateMessageStatus(tempId, 'delivered');
+                
+                // Update message in cache with server data
+                const messages = this.messages.get(this.currentChatId);
+                if (messages) {
+                    const msgIndex = messages.findIndex(m => m.id === tempId);
+                    if (msgIndex >= 0) {
+                        messages[msgIndex] = {
+                            ...messages[msgIndex],
+                            ...result.message,
+                            status: 'DELIVERED',
+                            isTemp: false
+                        };
+                    }
+                }
+            } else {
+                throw new Error(result.error || 'Failed to send message');
+            }
         } catch (error) {
             console.error('Error sending message:', error);
+            this.updateMessageStatus(tempId, 'failed');
             this.showNotification('Failed to send message', 'error');
+            
+            // Update message in cache
+            const messages = this.messages.get(this.currentChatId);
+            if (messages) {
+                const msgIndex = messages.findIndex(m => m.id === tempId);
+                if (msgIndex >= 0) {
+                    messages[msgIndex].status = 'ERROR';
+                    messages[msgIndex].hasError = true;
+                }
+            }
         }
     }
 
     async generateAIResponses(message, context = '') {
         try {
+            // Show loading indicator
+            this.showNotification('Generating AI responses...', 'info');
+            
+            // Get chat history for better context
+            const chatHistory = this.messages.get(this.currentChatId) || [];
+            const lastMessages = chatHistory.slice(-5); // Last 5 messages for context
+            
+            // Get contact info for personalization
+            const chatId = this.currentChatId;
+            const contactInfo = await this.fetchContactInfo(chatId);
+            
             const response = await fetch('/api/generate-ai', {
                 method: 'POST',
                 headers: {
@@ -652,14 +1170,79 @@ class WhatsAppAIApp {
                     chatId: this.currentChatId,
                     message: message,
                     context: context,
+                    chatHistory: lastMessages,
+                    contactInfo: contactInfo,
+                    timestamp: new Date().toISOString(),
+                    messageType: this.detectMessageIntent(message)
                 }),
             });
 
             const data = await response.json();
+            
+            // Store generated responses for this chat
+            if (!this.aiResponses) {
+                this.aiResponses = new Map();
+            }
+            this.aiResponses.set(this.currentChatId, data.responses);
+            
             return data.responses;
         } catch (error) {
             console.error('Error generating AI responses:', error);
+            this.showNotification('Error generating AI responses', 'error');
             return ['Sorry, I encountered an error generating responses.'];
+        }
+    }
+    
+    // Helper method to detect the intent/type of the message
+    detectMessageIntent(message) {
+        const lowerMessage = message.toLowerCase();
+        
+        // Detect greetings
+        if (/^(hi|hello|hey|good morning|good afternoon|good evening)\\b/i.test(lowerMessage)) {
+            return 'greeting';
+        }
+        
+        // Detect questions
+        if (/\\?$/.test(lowerMessage) || /^(what|who|where|when|why|how|can|could|would|is|are|do|does|did)/i.test(lowerMessage)) {
+            return 'question';
+        }
+        
+        // Detect requests
+        if (/^(please|pls|plz|can you|could you|would you)/i.test(lowerMessage)) {
+            return 'request';
+        }
+        
+        // Detect gratitude
+        if (/^(thanks|thank you|thx)/i.test(lowerMessage)) {
+            return 'gratitude';
+        }
+        
+        // Default to general conversation
+        return 'general';
+    }
+    
+    // Helper method to fetch contact information
+    async fetchContactInfo(chatId) {
+        try {
+            if (!chatId) return null;
+            
+            // Extract contact ID from chat ID
+            const contactId = chatId.endsWith('@c.us') ? chatId : `${chatId}@c.us`;
+            
+            // Check if we already have contact info
+            const contactItem = document.querySelector(`.contact-item[data-contact-id="${contactId.replace('@c.us', '')}"]`);
+            if (contactItem) {
+                const name = contactItem.querySelector('.contact-name')?.textContent;
+                const number = contactItem.querySelector('.contact-number')?.textContent;
+                return { id: contactId, name, number };
+            }
+            
+            // Otherwise fetch from API
+            const response = await fetch(`/api/contact/${contactId}`);
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching contact info:', error);
+            return null;
         }
     }
 
@@ -668,25 +1251,97 @@ class WhatsAppAIApp {
         const responsesContainer = document.getElementById('ai-responses');
 
         responsesContainer.innerHTML = '';
+        
+        // Get contact name for personalization
+        let contactName = "Unknown";
+        if (this.currentChatId) {
+            const chatItem = document.querySelector(`.chat-item[data-chat-id="${this.currentChatId}"]`);
+            if (chatItem) {
+                contactName = chatItem.querySelector('.chat-name')?.textContent || "Unknown";
+            }
+        }
 
         responses.forEach((response, index) => {
+            // Categorize response type for better UI
+            let responseType = "General";
+            let responseIcon = "fas fa-comment";
+            
+            if (response.toLowerCase().includes("question")) {
+                responseType = "Question";
+                responseIcon = "fas fa-question-circle";
+            } else if (response.toLowerCase().includes("thank")) {
+                responseType = "Gratitude";
+                responseIcon = "fas fa-heart";
+            } else if (response.toLowerCase().startsWith("hi") || response.toLowerCase().startsWith("hello")) {
+                responseType = "Greeting";
+                responseIcon = "fas fa-hand-paper";
+            } else if (response.toLowerCase().includes("sorry") || response.toLowerCase().includes("apologize")) {
+                responseType = "Apology";
+                responseIcon = "fas fa-exclamation-circle";
+            }
+            
             const responseElement = document.createElement('div');
             responseElement.className = 'ai-response';
             responseElement.innerHTML = `
                 <div class="ai-response-header">
-                    <div class="ai-response-title">Option ${index + 1}</div>
+                    <div class="ai-response-title"><i class="${responseIcon}"></i> ${responseType}</div>
+                    <div class="ai-response-rating">
+                        <button class="rating-btn" title="Rate this response" data-index="${index}">
+                            <i class="far fa-thumbs-up"></i>
+                        </button>
+                    </div>
                 </div>
-                <div class="ai-response-text">${this.escapeHtml(response)}</div>
+                <div class="ai-response-text">${this.escapeHtml(this.formatAIResponse(response, contactName))}</div>
             `;
 
             responseElement.addEventListener('click', () => {
                 this.useAIResponse(response);
+            });
+            
+            // Add rating functionality
+            const ratingBtn = responseElement.querySelector('.rating-btn');
+            ratingBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent selecting the response
+                this.rateAIResponse(index, response);
+                ratingBtn.innerHTML = '<i class="fas fa-thumbs-up"></i>';
+                ratingBtn.classList.add('rated');
             });
 
             responsesContainer.appendChild(responseElement);
         });
 
         modal.classList.remove('hidden');
+    }
+    
+    // Format AI response with personalization
+    formatAIResponse(response, contactName) {
+        // Replace generic placeholders with contact name
+        return response
+            .replace(/\[Name\]/g, contactName)
+            .replace(/\[Contact\]/g, contactName)
+            .replace(/\[User\]/g, contactName);
+    }
+    
+    // Send rating to server for AI improvement
+    async rateAIResponse(index, response) {
+        try {
+            await fetch('/api/rate-ai-response', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    chatId: this.currentChatId,
+                    responseIndex: index,
+                    response: response,
+                    rating: 'positive'
+                }),
+            });
+            
+            this.showNotification('Thanks for your feedback!', 'success');
+        } catch (error) {
+            console.error('Error rating AI response:', error);
+        }
     }
 
     hideAIModal() {
@@ -927,14 +1582,29 @@ class WhatsAppAIApp {
         // Update tab buttons
         chatsTab.classList.toggle('active', tab === 'chats');
         contactsTab.classList.toggle('active', tab === 'contacts');
+        
+        // Update ARIA attributes
+        chatsTab.setAttribute('aria-selected', tab === 'chats');
+        contactsTab.setAttribute('aria-selected', tab === 'contacts');
 
         // Show/hide content
         chatList.classList.toggle('hidden', tab !== 'chats');
         contactsList.classList.toggle('hidden', tab !== 'contacts');
+        
+        // Update ARIA hidden state
+        chatList.setAttribute('aria-hidden', tab !== 'chats');
+        contactsList.setAttribute('aria-hidden', tab !== 'contacts');
 
         // Load contacts if switching to contacts tab
         if (tab === 'contacts') {
             this.loadContacts();
+        }
+        
+        // Focus the active tab
+        if (tab === 'chats') {
+            chatsTab.focus();
+        } else {
+            contactsTab.focus();
         }
     }
 
@@ -969,17 +1639,39 @@ class WhatsAppAIApp {
         const displayName =
             contact.name || contact.pushname || contact.number || 'Unknown';
         const status = contact.status || 'Available';
+        
+        // Default to offline, will be updated via presence events
+        const isOnline = contact.isOnline || false;
+        const presenceClass = isOnline ? 'online' : 'offline';
+        const presenceText = isOnline ? 'online' : 'last seen recently';
+        
+        // Get profile picture if available
+        const profilePic = contact.profilePicUrl || this.getDefaultProfilePic(displayName);
+        const hasCustomPic = !!contact.profilePicUrl;
 
         contactItem.innerHTML = `
             <div class="contact-avatar">
-                <i class="fas fa-user"></i>
+                ${hasCustomPic ? 
+                    `<img src="${profilePic}" alt="${displayName}" class="profile-pic" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 212 212\\'%3E%3Cpath fill=\\'%2325D366\\' d=\\'M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z\\'/%3E%3C/svg%3E';" />` : 
+                    `<div class="profile-pic-placeholder" style="background-color: ${profilePic}">${displayName.charAt(0).toUpperCase()}</div>`
+                }
+                <span class="presence-indicator ${presenceClass}" title="${presenceText}"></span>
             </div>
             <div class="contact-info">
                 <div class="contact-name">${this.escapeHtml(displayName)}</div>
                 <div class="contact-number">${contact.number}</div>
-                <div class="contact-status">${status}</div>
+                <div class="contact-status">
+                    <span class="presence-text ${presenceClass}">
+                        ${isOnline ? 'online' : status}
+                    </span>
+                </div>
             </div>
         `;
+        
+        // If we have a contact ID but no profile picture, try to fetch it
+        if (contact.id && !contact.profilePicUrl) {
+            this.fetchProfilePicture(contact.id, contactItem.querySelector('.contact-avatar'));
+        }
 
         contactItem.addEventListener('click', () => {
             this.showContactDetails(contact);
@@ -1213,6 +1905,63 @@ class WhatsAppAIApp {
         }
     }
 
+    updateContactPresence(contactId, isOnline) {
+        console.log(`Presence update for ${contactId}: ${isOnline ? 'online' : 'offline'}`);
+        
+        // Update contact in contacts list
+        const contactItem = document.querySelector(`.contact-item[data-contact-id="${contactId}"]`);
+        if (contactItem) {
+            const indicator = contactItem.querySelector('.presence-indicator');
+            const statusText = contactItem.querySelector('.presence-text');
+            
+            if (indicator) {
+                indicator.className = `presence-indicator ${isOnline ? 'online' : 'offline'}`;
+                indicator.title = isOnline ? 'online' : 'last seen recently';
+            }
+            
+            if (statusText) {
+                statusText.className = `presence-text ${isOnline ? 'online' : ''}`;
+                statusText.textContent = isOnline ? 'online' : 'last seen recently';
+            }
+        }
+        
+        // Update chat in chat list
+        const chatItem = document.querySelector(`.chat-item[data-chat-id="${contactId}@c.us"]`);
+        if (chatItem) {
+            const indicator = chatItem.querySelector('.presence-indicator');
+            const previewEl = chatItem.querySelector('.chat-preview');
+            
+            if (indicator) {
+                indicator.className = `presence-indicator ${isOnline ? 'online' : 'offline'}`;
+            }
+            
+            if (previewEl) {
+                // Get the current message preview
+                const currentPreview = previewEl.textContent.trim();
+                const onlineText = '<span class="online-text">online</span> • ';
+                
+                if (isOnline) {
+                    // Add online indicator if not already present
+                    if (!previewEl.innerHTML.includes('online-text')) {
+                        const messageText = currentPreview.replace(/^online • /, '');
+                        previewEl.innerHTML = `${onlineText}${messageText}`;
+                    }
+                } else {
+                    // Remove online indicator if present
+                    previewEl.innerHTML = previewEl.innerHTML.replace(onlineText, '');
+                }
+            }
+            
+            // Store the online status in the chat object
+            if (this.chats) {
+                const chatIndex = this.chats.findIndex(c => c.id === `${contactId}@c.us`);
+                if (chatIndex !== -1) {
+                    this.chats[chatIndex].isOnline = isOnline;
+                }
+            }
+        }
+    }
+    
     showNotification(message, type = 'info') {
         // Simple notification system
         const notification = document.createElement('div');
@@ -1603,6 +2352,19 @@ class WhatsAppAIApp {
         messageDiv.className = `message ${message.fromMe ? 'sent' : 'received'}`;
 
         let messageContent = '';
+        
+        // Check if this is a group message and not from the current user
+        const isGroupMessage = this.currentChatId && this.currentChatId.endsWith('@g.us') && !message.fromMe;
+        const senderName = isGroupMessage ? (message.author || message.senderName || 'Unknown') : '';
+        
+        // If we have a sender ID but no name, try to find the contact name
+        if (isGroupMessage && message.author && (!senderName || senderName === 'Unknown')) {
+            const contactId = message.author.replace('@c.us', '');
+            const contact = this.contacts.find(c => c.id === contactId);
+            if (contact) {
+                senderName = contact.name || contact.pushname || contact.number || 'Unknown';
+            }
+        }
 
         // Debug logging
         console.log('Rendering message:', {
@@ -1610,6 +2372,8 @@ class WhatsAppAIApp {
             hasMedia: message.hasMedia,
             body: message.body?.substring(0, 50) + '...',
             media: message.media,
+            isGroup: isGroupMessage,
+            sender: senderName
         });
 
         // Check for voice messages by type or body content
@@ -1633,9 +2397,14 @@ class WhatsAppAIApp {
         const status = message.fromMe
             ? '<span class="message-status delivered">✓</span>'
             : '';
+            
+        // Add sender name for group messages
+        const senderHeader = isGroupMessage && senderName ? 
+            `<div class="message-sender">${this.escapeHtml(senderName)}</div>` : '';
 
         messageDiv.innerHTML = `
             <div class="message-bubble">
+                ${senderHeader}
                 ${messageContent}
                 <div class="message-time">
                     ${timestamp}
@@ -1654,11 +2423,21 @@ class WhatsAppAIApp {
             message.body || (message.media && message.media.data) || '';
         const mimeType =
             (message.media && message.media.mimetype) || 'audio/ogg';
+            
+        // Check if we already have a transcription
+        const transcription = message.transcription || message.summary || '';
+        const hasTranscription = !!transcription;
+        
+        // If no transcription, request one
+        if (!hasTranscription && audioData) {
+            this.requestVoiceTranscription(messageId, audioData, mimeType);
+        }
 
         console.log('Rendering voice message:', {
             messageId,
             hasAudioData: !!audioData,
             mimeType,
+            hasTranscription
         });
 
         return `
@@ -1669,6 +2448,12 @@ class WhatsAppAIApp {
                 <div class="voice-info">
                     <div class="voice-duration">Voice message</div>
                     <div class="voice-timestamp">${this.formatTime(message.timestamp * 1000)}</div>
+                    ${hasTranscription ? 
+                        `<div class="voice-transcription">"${transcription}"</div>` : 
+                        `<div class="voice-transcription-pending" id="transcription-${messageId}">
+                            <i class="fas fa-spinner fa-spin"></i> Generating summary...
+                        </div>`
+                    }
                 </div>
                 <audio id="voice-audio-${messageId}" preload="none" controls style="display: none;">
                     <source src="data:${mimeType};base64,${audioData}" type="${mimeType}">
@@ -1676,6 +2461,66 @@ class WhatsAppAIApp {
                 </audio>
             </div>
         `;
+    }
+    
+    async requestVoiceTranscription(messageId, audioData, mimeType) {
+        try {
+            // Request transcription from the server
+            const response = await fetch('/api/transcribe-voice', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    messageId,
+                    audioData,
+                    mimeType
+                }),
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to request transcription');
+            }
+            
+            const result = await response.json();
+            
+            // Update the transcription in the UI
+            this.updateVoiceTranscription(messageId, result.transcription || "Could not transcribe audio");
+            
+            // Store the transcription with the message
+            this.storeVoiceTranscription(messageId, result.transcription);
+            
+        } catch (error) {
+            console.error('Error requesting voice transcription:', error);
+            
+            // Show error in the UI
+            this.updateVoiceTranscription(messageId, "Could not transcribe audio");
+        }
+    }
+    
+    updateVoiceTranscription(messageId, transcription) {
+        const transcriptionElement = document.getElementById(`transcription-${messageId}`);
+        if (transcriptionElement) {
+            transcriptionElement.innerHTML = `"${this.escapeHtml(transcription)}"`;
+            transcriptionElement.classList.remove('voice-transcription-pending');
+            transcriptionElement.classList.add('voice-transcription');
+        }
+    }
+    
+    storeVoiceTranscription(messageId, transcription) {
+        // Find the message in our cache and update it
+        for (const [chatId, messages] of this.messages.entries()) {
+            const messageIndex = messages.findIndex(m => {
+                const mId = m.id || (m.id && m.id._serialized);
+                return mId === messageId;
+            });
+            
+            if (messageIndex !== -1) {
+                messages[messageIndex].transcription = transcription;
+                break;
+            }
+        }
+    }
     }
 
     renderMediaMessage(message) {
@@ -1908,12 +2753,67 @@ class WhatsAppAIApp {
                 console.log('Loading chats...');
                 const response = await fetch('/api/chats');
                 const chats = await response.json();
-                this.renderChatList(chats);
+                
+                // Store chats in memory for sorting
+                this.chats = chats;
+                
+                // Apply current sort method (default: recent)
+                this.sortAndRenderChats();
+                
                 console.log(`Auto-loaded ${chats.length} chats`);
             } catch (error) {
                 console.error('Error auto-loading chats:', error);
             }
         }
+    }
+    
+    sortAndRenderChats() {
+        if (!this.chats || !this.chats.length) return;
+        
+        // Get active sort method
+        const activeSortBtn = document.querySelector('.sort-btn.active');
+        const sortMethod = activeSortBtn ? activeSortBtn.id.replace('sort-', '') : 'recent';
+        
+        let sortedChats = [...this.chats];
+        
+        // Apply sorting based on method
+        switch (sortMethod) {
+            case 'recent':
+                // Sort by timestamp (most recent first)
+                sortedChats.sort((a, b) => {
+                    const timeA = a.timestamp || 0;
+                    const timeB = b.timestamp || 0;
+                    return timeB - timeA;
+                });
+                break;
+                
+            case 'unread':
+                // Sort by unread count (highest first)
+                sortedChats.sort((a, b) => {
+                    const unreadA = a.unreadCount || 0;
+                    const unreadB = b.unreadCount || 0;
+                    if (unreadA === unreadB) {
+                        // If unread counts are the same, sort by timestamp
+                        const timeA = a.timestamp || 0;
+                        const timeB = b.timestamp || 0;
+                        return timeB - timeA;
+                    }
+                    return unreadB - unreadA;
+                });
+                break;
+                
+            case 'name':
+                // Sort alphabetically by name
+                sortedChats.sort((a, b) => {
+                    const nameA = (a.name || '').toLowerCase();
+                    const nameB = (b.name || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+                break;
+        }
+        
+        // Render the sorted chats
+        this.renderChatList(sortedChats);
     }
 
     async loadContacts() {
@@ -2036,8 +2936,9 @@ class WhatsAppAIApp {
     // AI Prompts functionality
     toggleAIPrompts() {
         const container = document.getElementById('ai-prompts-container');
+        const isHidden = container.style.display === 'none' || !container.style.display;
 
-        if (container.style.display === 'none') {
+        if (isHidden) {
             this.showAIPrompts();
         } else {
             this.hideAIPrompts();
@@ -2050,9 +2951,13 @@ class WhatsAppAIApp {
 
         container.style.display = 'block';
         btn.classList.add('active');
+        btn.setAttribute('aria-expanded', 'true');
 
         // Generate AI prompts based on current chat
         this.generateAIPrompts();
+        
+        // Announce to screen readers
+        this.announceToScreenReader('AI suggestions are now available');
     }
 
     hideAIPrompts() {
@@ -2061,6 +2966,33 @@ class WhatsAppAIApp {
 
         container.style.display = 'none';
         btn.classList.remove('active');
+        btn.setAttribute('aria-expanded', 'false');
+        
+        // Announce to screen readers
+        this.announceToScreenReader('AI suggestions are now hidden');
+    }
+    
+    // Helper method for screen reader announcements
+    announceToScreenReader(message) {
+        // Create or get the live region
+        let liveRegion = document.getElementById('screen-reader-announcer');
+        
+        if (!liveRegion) {
+            liveRegion = document.createElement('div');
+            liveRegion.id = 'screen-reader-announcer';
+            liveRegion.setAttribute('aria-live', 'polite');
+            liveRegion.setAttribute('aria-atomic', 'true');
+            liveRegion.className = 'sr-only';
+            document.body.appendChild(liveRegion);
+        }
+        
+        // Set the message
+        liveRegion.textContent = message;
+        
+        // Clear after a short delay
+        setTimeout(() => {
+            liveRegion.textContent = '';
+        }, 3000);
     }
 
     async generateAIPrompts() {
@@ -2849,6 +3781,185 @@ class WhatsAppAIApp {
 }
 
 // Initialize the app when the page loads
+    // Schedule Message Methods
+    setupScheduleModal() {
+        const modal = document.getElementById('schedule-modal');
+        const closeBtn = document.getElementById('close-schedule-modal');
+        const cancelBtn = document.getElementById('cancel-schedule-btn');
+        const confirmBtn = document.getElementById('confirm-schedule-btn');
+        const dateInput = document.getElementById('schedule-date');
+        const timeInput = document.getElementById('schedule-time');
+        const messageInput = document.getElementById('schedule-message');
+        const datetimeDisplay = document.getElementById('scheduled-datetime-display');
+        
+        // Close modal buttons
+        closeBtn.addEventListener('click', () => this.hideScheduleModal());
+        cancelBtn.addEventListener('click', () => this.hideScheduleModal());
+        
+        // Update preview when date/time changes
+        const updatePreview = () => {
+            const date = dateInput.value;
+            const time = timeInput.value;
+            
+            if (date && time) {
+                const datetime = new Date(`${date}T${time}`);
+                datetimeDisplay.textContent = datetime.toLocaleString();
+            } else {
+                datetimeDisplay.textContent = 'Please select date and time';
+            }
+        };
+        
+        dateInput.addEventListener('change', updatePreview);
+        timeInput.addEventListener('change', updatePreview);
+        
+        // Set default date and time (tomorrow, same time)
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        dateInput.value = tomorrow.toISOString().split('T')[0];
+        
+        const now = new Date();
+        timeInput.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        
+        // Initialize preview
+        updatePreview();
+        
+        // Schedule button
+        confirmBtn.addEventListener('click', () => {
+            const date = dateInput.value;
+            const time = timeInput.value;
+            const message = messageInput.value.trim();
+            
+            if (!date || !time || !message) {
+                this.showNotification('Please fill all fields', 'error');
+                return;
+            }
+            
+            const scheduledTime = new Date(`${date}T${time}`);
+            
+            if (scheduledTime <= new Date()) {
+                this.showNotification('Please select a future date and time', 'error');
+                return;
+            }
+            
+            this.scheduleMessage(message, scheduledTime);
+            this.hideScheduleModal();
+        });
+    }
+    
+    showScheduleModal() {
+        if (!this.currentChatId) {
+            this.showNotification('Please select a chat first', 'error');
+            return;
+        }
+        
+        const modal = document.getElementById('schedule-modal');
+        const messageInput = document.getElementById('schedule-message');
+        const currentInput = document.getElementById('message-input');
+        
+        // Copy current message input to schedule message input
+        messageInput.value = currentInput.value;
+        
+        // Show modal
+        modal.classList.remove('hidden');
+    }
+    
+    hideScheduleModal() {
+        const modal = document.getElementById('schedule-modal');
+        modal.classList.add('hidden');
+    }
+    
+    scheduleMessage(message, scheduledTime) {
+        if (!this.currentChatId) return;
+        
+        const scheduledMessage = {
+            id: Date.now().toString(),
+            chatId: this.currentChatId,
+            message,
+            scheduledTime: scheduledTime.getTime(),
+            created: Date.now()
+        };
+        
+        // Add to scheduled messages
+        this.scheduledMessages.push(scheduledMessage);
+        
+        // Save to localStorage
+        this.saveScheduledMessages();
+        
+        // Show notification
+        this.showNotification(`Message scheduled for ${scheduledTime.toLocaleString()}`, 'success');
+        
+        // Clear message input
+        document.getElementById('message-input').value = '';
+        document.getElementById('send-btn').disabled = true;
+    }
+    
+    loadScheduledMessages() {
+        const savedMessages = localStorage.getItem('scheduledMessages');
+        return savedMessages ? JSON.parse(savedMessages) : [];
+    }
+    
+    saveScheduledMessages() {
+        localStorage.setItem('scheduledMessages', JSON.stringify(this.scheduledMessages));
+    }
+    
+    startScheduledMessageChecker() {
+        // Check every minute
+        setInterval(() => {
+            this.checkScheduledMessages();
+        }, 60000);
+        
+        // Also check immediately
+        this.checkScheduledMessages();
+    }
+    
+    checkScheduledMessages() {
+        if (!this.isConnected || !this.scheduledMessages.length) return;
+        
+        const now = Date.now();
+        const messagesToSend = [];
+        const remainingMessages = [];
+        
+        // Find messages that need to be sent
+        for (const message of this.scheduledMessages) {
+            if (message.scheduledTime <= now) {
+                messagesToSend.push(message);
+            } else {
+                remainingMessages.push(message);
+            }
+        }
+        
+        // Update scheduled messages
+        this.scheduledMessages = remainingMessages;
+        this.saveScheduledMessages();
+        
+        // Send messages
+        for (const message of messagesToSend) {
+            this.sendScheduledMessage(message);
+        }
+    }
+    
+    async sendScheduledMessage(scheduledMessage) {
+        try {
+            // Store current chat ID
+            const currentChatId = this.currentChatId;
+            
+            // Switch to the target chat
+            this.currentChatId = scheduledMessage.chatId;
+            
+            // Send the message
+            await this.sendMessage(scheduledMessage.message);
+            
+            // Restore current chat ID
+            this.currentChatId = currentChatId;
+            
+            this.showNotification('Scheduled message sent', 'success');
+        } catch (error) {
+            console.error('Error sending scheduled message:', error);
+            this.showNotification('Failed to send scheduled message', 'error');
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     new WhatsAppAIApp();
 });
