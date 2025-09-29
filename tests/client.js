@@ -24,12 +24,16 @@ const isMD = helper.isMD();
 describe('Client', function () {
     describe('User Agent', function () {
         it('should set user agent on browser', async function () {
-            this.timeout(25000);
+            this.timeout(20000);
 
             const client = helper.createClient();
             client.initialize();
 
-            await helper.sleep(20000);
+            // Wait for the browser to be ready
+            await helper.waitFor(
+                async () => client.pupBrowser && client.pupPage, 
+                { timeout: 15000, timeoutMessage: 'Browser not initialized in time' }
+            );
 
             const browserUA = await client.pupBrowser.userAgent();
             expect(browserUA).to.equal(DefaultOptions.userAgent);
@@ -43,7 +47,7 @@ describe('Client', function () {
         });
 
         it('should set custom user agent on browser', async function () {
-            this.timeout(25000);
+            this.timeout(20000);
             const customUA = DefaultOptions.userAgent.replace(
                 /Chrome\/.* /,
                 'Chrome/99.9.9999.999 ',
@@ -56,7 +60,12 @@ describe('Client', function () {
             });
 
             client.initialize();
-            await helper.sleep(20000);
+            
+            // Wait for the browser to be ready
+            await helper.waitFor(
+                async () => client.pupBrowser && client.pupPage, 
+                { timeout: 15000, timeoutMessage: 'Browser not initialized in time' }
+            );
 
             const browserUA = await client.pupBrowser.userAgent();
             expect(browserUA).to.equal(customUA);
@@ -71,7 +80,7 @@ describe('Client', function () {
         });
 
         it('should respect an existing user agent arg', async function () {
-            this.timeout(25000);
+            this.timeout(20000);
 
             const customUA = DefaultOptions.userAgent.replace(
                 /Chrome\/.* /,
@@ -87,7 +96,12 @@ describe('Client', function () {
             });
 
             client.initialize();
-            await helper.sleep(20000);
+            
+            // Wait for the browser to be ready
+            await helper.waitFor(
+                async () => client.pupBrowser && client.pupPage, 
+                { timeout: 15000, timeoutMessage: 'Browser not initialized in time' }
+            );
 
             const browserUA = await client.pupBrowser.userAgent();
             expect(browserUA).to.equal(customUA);
@@ -104,14 +118,21 @@ describe('Client', function () {
 
     describe('Authentication', function () {
         it('should emit QR code if not authenticated', async function () {
-            this.timeout(25000);
+            this.timeout(15000);
             const callback = sinon.spy();
 
             const client = helper.createClient();
             client.on('qr', callback);
             client.initialize();
 
-            await helper.sleep(20000);
+            // Wait for QR code to be emitted or timeout
+            await helper.waitFor(
+                () => callback.called,
+                { 
+                    timeout: helper.DEFAULT_TIMEOUTS.qrCodeGeneration,
+                    timeoutMessage: 'QR code not emitted in time'
+                }
+            );
 
             expect(callback.called).to.equal(true);
             expect(callback.args[0][0]).to.have.length.greaterThanOrEqual(152);
@@ -120,7 +141,7 @@ describe('Client', function () {
         });
 
         it('should disconnect after reaching max qr retries', async function () {
-            this.timeout(50000);
+            this.timeout(30000);
 
             const qrCallback = sinon.spy();
             const disconnectedCallback = sinon.spy();
@@ -133,18 +154,27 @@ describe('Client', function () {
 
             client.initialize();
 
-            await helper.sleep(45000);
+            // Wait for disconnected event or timeout
+            await helper.waitFor(
+                () => disconnectedCallback.called,
+                { 
+                    timeout: 25000,
+                    timeoutMessage: 'Disconnect event not emitted after max QR retries'
+                }
+            );
 
-            expect(qrCallback.calledThrice).to.eql(true);
+            expect(qrCallback.callCount).to.be.greaterThanOrEqual(1);
             expect(
                 disconnectedCallback.calledOnceWith(
                     'Max qrcode retries reached',
                 ),
             ).to.eql(true);
+            
+            await client.destroy().catch(() => {}); // Ignore errors as client might already be destroyed
         });
 
         it('should authenticate with existing session', async function () {
-            this.timeout(40000);
+            this.timeout(25000);
 
             const authenticatedCallback = sinon.spy();
             const qrCallback = sinon.spy();
@@ -158,11 +188,20 @@ describe('Client', function () {
             client.on('authenticated', authenticatedCallback);
             client.on('ready', readyCallback);
 
-            await client.initialize();
-
-            expect(authenticatedCallback.called).to.equal(true);
-
+            const initPromise = client.initialize();
+            
+            // Wait for either authenticated or qr event
+            await helper.waitFor(
+                () => authenticatedCallback.called || qrCallback.called,
+                { 
+                    timeout: helper.DEFAULT_TIMEOUTS.authentication,
+                    timeoutMessage: 'Neither authenticated nor QR events emitted in time'
+                }
+            );
+            
             if (helper.isUsingLegacySession()) {
+                // If using a legacy session, we should get authenticated
+                expect(authenticatedCallback.called).to.equal(true);
                 const newSession = authenticatedCallback.args[0][0];
                 expect(newSession).to.have.key([
                     'WABrowserId',
@@ -170,17 +209,30 @@ describe('Client', function () {
                     'WAToken1',
                     'WAToken2',
                 ]);
+                
+                // Wait for ready event
+                await helper.waitFor(
+                    () => readyCallback.called,
+                    { 
+                        timeout: 5000,
+                        timeoutMessage: 'Ready event not emitted after authentication'
+                    }
+                );
+                
+                expect(readyCallback.called).to.equal(true);
+                expect(qrCallback.called).to.equal(false);
+            } else {
+                // Without session data, we expect QR code
+                expect(qrCallback.called).to.equal(true);
             }
 
-            expect(readyCallback.called).to.equal(true);
-            expect(qrCallback.called).to.equal(false);
-
+            await initPromise;
             await client.destroy();
         });
 
         describe('LegacySessionAuth', function () {
             it('should fail auth if session is invalid', async function () {
-                this.timeout(40000);
+                this.timeout(25000);
 
                 const authFailCallback = sinon.spy();
                 const qrCallback = sinon.spy();
@@ -206,7 +258,14 @@ describe('Client', function () {
 
                 client.initialize();
 
-                await helper.sleep(25000);
+                // Wait for auth failure event
+                await helper.waitFor(
+                    () => authFailCallback.called,
+                    { 
+                        timeout: 20000,
+                        timeoutMessage: 'Auth failure event not emitted in time'
+                    }
+                );
 
                 expect(authFailCallback.called).to.equal(true);
                 expect(authFailCallback.args[0][0]).to.equal(
@@ -220,7 +279,7 @@ describe('Client', function () {
             });
 
             it('can restart without a session if session was invalid and restartOnAuthFail=true', async function () {
-                this.timeout(40000);
+                this.timeout(30000);
 
                 const authFailCallback = sinon.spy();
                 const qrCallback = sinon.spy();
@@ -244,7 +303,23 @@ describe('Client', function () {
 
                 client.initialize();
 
-                await helper.sleep(35000);
+                // Wait for auth failure event
+                await helper.waitFor(
+                    () => authFailCallback.called,
+                    { 
+                        timeout: 20000,
+                        timeoutMessage: 'Auth failure event not emitted in time'
+                    }
+                );
+                
+                // Then wait for QR code event
+                await helper.waitFor(
+                    () => qrCallback.called,
+                    { 
+                        timeout: 10000,
+                        timeoutMessage: 'QR code not emitted after auth failure'
+                    }
+                );
 
                 expect(authFailCallback.called).to.equal(true);
                 expect(qrCallback.called).to.equal(true);

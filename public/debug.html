@@ -3,147 +3,462 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Layout Debug - WhatsApp Web</title>
+    <title>WhatsApp Web Debug Console</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Courier New', monospace;
-            padding: 20px;
-            background: #111;
-            color: #0f0;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #25d366;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-card h3 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #25d366;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #333;
+        }
+
         .test-container {
             display: flex;
             height: 400px;
-            border: 2px solid #0f0;
+            border-radius: 12px;
+            overflow: hidden;
             margin: 20px 0;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         }
+
         .test-sidebar {
             width: 400px;
             min-width: 400px;
             max-width: 400px;
             flex: 0 0 400px;
             background: #2a3942;
-            border-right: 2px solid #f00;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 10px;
         }
+
         .test-chat-area {
             flex: 1 1 0;
             width: 0;
             min-width: 0;
             background: #0b141a;
-            border: 2px solid #00f;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 10px;
         }
-        .info {
-            background: #222;
-            padding: 10px;
-            margin: 10px 0;
-            border-left: 3px solid #0f0;
+
+        .result {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
         }
-        .error {
-            background: #400;
-            border-left: 3px solid #f00;
+
+        .result.success {
+            border-left: 4px solid #25d366;
+            background: linear-gradient(135deg, rgba(37, 211, 102, 0.1) 0%, rgba(37, 211, 102, 0.05) 100%);
         }
-        .success {
-            background: #040;
-            border-left: 3px solid #0f0;
+
+        .result.error {
+            border-left: 4px solid #ff4444;
+            background: linear-gradient(135deg, rgba(255, 68, 68, 0.1) 0%, rgba(255, 68, 68, 0.05) 100%);
         }
-        button {
-            background: #25d366;
+
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 30px 0;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #25d366 0%, #1fa855 100%);
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
             cursor: pointer;
-            margin: 5px;
             font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: center;
         }
-        button:hover {
-            background: #1fa855;
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(37, 211, 102, 0.3);
         }
-        pre {
-            background: #000;
-            padding: 10px;
-            overflow-x: auto;
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        .test-content {
+
+        .btn-secondary:hover {
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff4444 0%, #cc3333 100%);
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 4px 16px rgba(255, 68, 68, 0.3);
+        }
+
+        .output-container {
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 12px;
             padding: 20px;
-            color: white;
+            margin: 20px 0;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .output-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .output-container::-webkit-scrollbar-track {
+            background: #333;
+            border-radius: 4px;
+        }
+
+        .output-container::-webkit-scrollbar-thumb {
+            background: #25d366;
+            border-radius: 4px;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+
+        .log-timestamp {
+            color: #888;
+        }
+
+        .log-success {
+            color: #00ff00;
+        }
+
+        .log-error {
+            color: #ff4444;
+        }
+
+        .log-warning {
+            color: #ffaa00;
+        }
+
+        .section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 25px;
+            margin: 20px 0;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-online {
+            background: #25d366;
+            box-shadow: 0 0 10px rgba(37, 211, 102, 0.5);
+        }
+
+        .status-offline {
+            background: #ff4444;
+        }
+
+        .status-warning {
+            background: #ffaa00;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .test-container {
+                flex-direction: column;
+                height: auto;
+            }
+            
+            .test-sidebar {
+                width: 100%;
+                min-width: auto;
+                max-width: none;
+                flex: none;
+            }
+            
+            .actions {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>🔍 WhatsApp Web Layout Debugger</h1>
-    
-    <div class="info">
-        <strong>Window Size:</strong> <span id="window-size"></span><br>
-        <strong>Screen Resolution:</strong> <span id="screen-size"></span>
-    </div>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <i class="fab fa-whatsapp"></i>
+                WhatsApp Web Debug Console
+            </h1>
+            <p>Advanced diagnostic and testing interface for WhatsApp Web.js</p>
+        </div>
 
-    <h2>Test Layout (should be: sidebar 400px + chat fills rest)</h2>
-    <div class="test-container">
-        <div class="test-sidebar">
-            <div class="test-content">
-                <strong>Sidebar</strong><br>
-                Width: <span id="test-sidebar-width"></span>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3><i class="fas fa-desktop"></i> Window Size</h3>
+                <div class="stat-value" id="window-size">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <h3><i class="fas fa-expand"></i> Screen Resolution</h3>
+                <div class="stat-value" id="screen-size">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <h3><i class="fas fa-columns"></i> Sidebar Width</h3>
+                <div class="stat-value" id="test-sidebar-width">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <h3><i class="fas fa-comments"></i> Chat Area Width</h3>
+                <div class="stat-value" id="test-chat-area-width">Loading...</div>
             </div>
         </div>
-        <div class="test-chat-area">
-            <div class="test-content">
-                <strong>Chat Area</strong><br>
-                Width: <span id="test-chat-area-width"></span>
+
+        <div class="section">
+            <h2><i class="fas fa-flask"></i> Layout Test</h2>
+            <p>Testing the main application layout structure:</p>
+            <div class="test-container">
+                <div class="test-sidebar">
+                    <i class="fas fa-list" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <strong>Sidebar</strong>
+                    <span id="test-sidebar-width-display">Loading...</span>
+                </div>
+                <div class="test-chat-area">
+                    <i class="fas fa-comments" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <strong>Chat Area</strong>
+                    <span id="test-chat-area-width-display">Loading...</span>
+                </div>
+            </div>
+            <div id="result" class="result"></div>
+        </div>
+
+        <div class="section">
+            <h2><i class="fas fa-tools"></i> Diagnostic Actions</h2>
+            <div class="actions">
+                <button class="btn" onclick="checkMainApp()">
+                    <i class="fas fa-search"></i>
+                    Check Main App Layout
+                </button>
+                <button class="btn btn-secondary" onclick="clearAllCache()">
+                    <i class="fas fa-trash"></i>
+                    Clear All Caches
+                </button>
+                <button class="btn btn-secondary" onclick="checkStyles()">
+                    <i class="fas fa-paint-brush"></i>
+                    Check Loaded Styles
+                </button>
+                <button class="btn" onclick="window.location.href='/'">
+                    <i class="fas fa-home"></i>
+                    Go to Main App
+                </button>
+                <button class="btn btn-danger" onclick="runFullDiagnostic()">
+                    <i class="fas fa-stethoscope"></i>
+                    Run Full Diagnostic
+                </button>
+                <button class="btn btn-secondary" onclick="exportLogs()">
+                    <i class="fas fa-download"></i>
+                    Export Logs
+                </button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><i class="fas fa-terminal"></i> Live Diagnostic Output</h2>
+            <div class="output-container" id="output">
+                <div class="log-entry">
+                    <span class="log-timestamp">[System]</span>
+                    <span class="log-success">Debug console initialized</span>
+                </div>
             </div>
         </div>
     </div>
-
-    <div id="result"></div>
-
-    <h2>Actions</h2>
-    <button onclick="checkMainApp()">Check Main App Layout</button>
-    <button onclick="clearAllCache()">Clear All Caches</button>
-    <button onclick="checkStyles()">Check Loaded Styles</button>
-    <button onclick="window.location.href='/'">Go to Main App</button>
-
-    <h2>Live Diagnostic Output</h2>
-    <pre id="output"></pre>
 
     <script>
-        function log(msg, isError = false) {
+        let logCount = 0;
+        const maxLogs = 100;
+
+        function log(msg, type = 'info') {
             const output = document.getElementById('output');
             const timestamp = new Date().toLocaleTimeString();
-            const prefix = isError ? '❌' : '✅';
-            output.textContent += `[${timestamp}] ${prefix} ${msg}\n`;
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'log-timestamp';
+            timestampSpan.textContent = `[${timestamp}]`;
+            
+            const messageSpan = document.createElement('span');
+            messageSpan.className = `log-${type}`;
+            
+            let icon = '';
+            switch(type) {
+                case 'success': icon = '✅'; break;
+                case 'error': icon = '❌'; break;
+                case 'warning': icon = '⚠️'; break;
+                default: icon = 'ℹ️';
+            }
+            
+            messageSpan.textContent = `${icon} ${msg}`;
+            
+            logEntry.appendChild(timestampSpan);
+            logEntry.appendChild(messageSpan);
+            output.appendChild(logEntry);
+            
+            // Remove old logs if we exceed max
+            logCount++;
+            if (logCount > maxLogs) {
+                const firstLog = output.querySelector('.log-entry');
+                if (firstLog) firstLog.remove();
+                logCount--;
+            }
+            
             output.scrollTop = output.scrollHeight;
         }
 
         function updateSizes() {
-            document.getElementById('window-size').textContent = 
-                `${window.innerWidth}px × ${window.innerHeight}px`;
-            document.getElementById('screen-size').textContent = 
-                `${screen.width}px × ${screen.height}px`;
+            const windowSize = `${window.innerWidth}px × ${window.innerHeight}px`;
+            const screenSize = `${screen.width}px × ${screen.height}px`;
+            
+            document.getElementById('window-size').textContent = windowSize;
+            document.getElementById('screen-size').textContent = screenSize;
             
             const testSidebar = document.querySelector('.test-sidebar');
             const testChatArea = document.querySelector('.test-chat-area');
             
-            document.getElementById('test-sidebar-width').textContent = 
-                `${testSidebar.offsetWidth}px`;
-            document.getElementById('test-chat-area-width').textContent = 
-                `${testChatArea.offsetWidth}px`;
+            const sidebarWidth = testSidebar.offsetWidth;
+            const chatAreaWidth = testChatArea.offsetWidth;
             
-            const total = testSidebar.offsetWidth + testChatArea.offsetWidth;
-            const expected = window.innerWidth - 80; // minus body padding
+            document.getElementById('test-sidebar-width').textContent = `${sidebarWidth}px`;
+            document.getElementById('test-chat-area-width').textContent = `${chatAreaWidth}px`;
+            document.getElementById('test-sidebar-width-display').textContent = `${sidebarWidth}px`;
+            document.getElementById('test-chat-area-width-display').textContent = `${chatAreaWidth}px`;
+            
+            const total = sidebarWidth + chatAreaWidth;
+            const expected = window.innerWidth - 80; // minus container padding
             
             const result = document.getElementById('result');
             if (Math.abs(total - expected) < 50) {
-                result.className = 'info success';
-                result.innerHTML = `<strong>✅ TEST LAYOUT WORKS!</strong><br>
-                    Sidebar: ${testSidebar.offsetWidth}px<br>
-                    Chat Area: ${testChatArea.offsetWidth}px<br>
-                    Total: ${total}px (Expected: ~${expected}px)`;
+                result.className = 'result success';
+                result.innerHTML = `
+                    <h3><span class="status-indicator status-online"></span>Layout Test Passed!</h3>
+                    <p><strong>Sidebar:</strong> ${sidebarWidth}px | <strong>Chat Area:</strong> ${chatAreaWidth}px</p>
+                    <p><strong>Total:</strong> ${total}px (Expected: ~${expected}px)</p>
+                `;
+                log('Layout test passed successfully', 'success');
             } else {
-                result.className = 'info error';
-                result.innerHTML = `<strong>❌ TEST LAYOUT BROKEN!</strong><br>
-                    Sidebar: ${testSidebar.offsetWidth}px<br>
-                    Chat Area: ${testChatArea.offsetWidth}px<br>
-                    Total: ${total}px (Expected: ~${expected}px)<br>
-                    Missing: ${expected - total}px`;
+                result.className = 'result error';
+                result.innerHTML = `
+                    <h3><span class="status-indicator status-offline"></span>Layout Test Failed!</h3>
+                    <p><strong>Sidebar:</strong> ${sidebarWidth}px | <strong>Chat Area:</strong> ${chatAreaWidth}px</p>
+                    <p><strong>Total:</strong> ${total}px (Expected: ~${expected}px)</p>
+                    <p><strong>Missing:</strong> ${expected - total}px</p>
+                `;
+                log(`Layout test failed - missing ${expected - total}px`, 'error');
             }
         }
 
@@ -159,7 +474,7 @@
                     const mainApp = doc.querySelector('.main-app');
                     
                     if (!sidebar || !chatArea) {
-                        log('Main app not fully loaded yet. Wait and try again.', true);
+                        log('Main app not fully loaded yet. Wait and try again.', 'warning');
                         return;
                     }
                     
@@ -172,12 +487,12 @@
                     const actual = sidebar.offsetWidth + chatArea.offsetWidth;
                     
                     if (Math.abs(expected - actual) < 50) {
-                        log(`✅ MAIN APP LAYOUT IS CORRECT!`);
+                        log('Main app layout is correct!', 'success');
                     } else {
-                        log(`❌ MAIN APP LAYOUT IS BROKEN! Missing ${expected - actual}px`, true);
+                        log(`Main app layout is broken! Missing ${expected - actual}px`, 'error');
                     }
                 } catch (e) {
-                    log(`Error checking main app: ${e.message}. Open manually.`, true);
+                    log(`Error checking main app: ${e.message}. Open manually.`, 'error');
                 }
             }, 2000);
         }
@@ -204,7 +519,7 @@
             sessionStorage.clear();
             log(`Cleared ${ssCount} sessionStorage items`);
             
-            log('✅ All caches cleared! Now do Ctrl+Shift+R');
+            log('All caches cleared! Now do Ctrl+Shift+R', 'success');
         }
 
         function checkStyles() {
@@ -222,25 +537,48 @@
                 .then(r => r.text())
                 .then(html => {
                     if (html.includes('critical-layout-fix')) {
-                        log('✅ Critical CSS injection found in HTML');
+                        log('Critical CSS injection found in HTML', 'success');
                     } else {
-                        log('❌ Critical CSS injection NOT found!', true);
+                        log('Critical CSS injection NOT found!', 'error');
                     }
                     
                     if (html.includes('Hot reload active')) {
-                        log('✅ Hot reload script found');
+                        log('Hot reload script found', 'success');
                     } else {
-                        log('⚠️ Hot reload script not found (may not be in dev mode)');
+                        log('Hot reload script not found (may not be in dev mode)', 'warning');
                     }
                 })
-                .catch(e => log(`Error fetching HTML: ${e}`, true));
+                .catch(e => log(`Error fetching HTML: ${e}`, 'error'));
+        }
+
+        function runFullDiagnostic() {
+            log('Starting full diagnostic...', 'info');
+            updateSizes();
+            checkStyles();
+            log('Full diagnostic completed', 'success');
+        }
+
+        function exportLogs() {
+            const output = document.getElementById('output');
+            const logs = Array.from(output.querySelectorAll('.log-entry'))
+                .map(entry => entry.textContent)
+                .join('\n');
+            
+            const blob = new Blob([logs], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `whatsapp-debug-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.log`;
+            a.click();
+            URL.revokeObjectURL(url);
+            log('Logs exported successfully', 'success');
         }
 
         // Run diagnostics on load
         window.addEventListener('load', () => {
             updateSizes();
-            log('Debugger loaded successfully');
-            log(`Running in: ${navigator.userAgent}`);
+            log('Debug console loaded successfully', 'success');
+            log(`Running in: ${navigator.userAgent}`, 'info');
         });
 
         window.addEventListener('resize', updateSizes);

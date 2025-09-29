@@ -435,6 +435,16 @@ class Client extends EventEmitter {
             }
             // navigator.webdriver fix
             browserArgs.push('--disable-blink-features=AutomationControlled');
+            
+            // Windows-specific fixes for Code 21 errors
+            if (process.platform === 'win32') {
+                browserArgs.push('--no-sandbox');
+                browserArgs.push('--disable-setuid-sandbox');
+                browserArgs.push('--disable-dev-shm-usage');
+                browserArgs.push('--disable-gpu');
+                browserArgs.push('--disable-web-security');
+                browserArgs.push('--disable-features=VizDisplayCompositor');
+            }
 
             browser = await puppeteer.launch({
                 ...puppeteerOpts,
@@ -1189,8 +1199,12 @@ class Client extends EventEmitter {
      * Closes the client
      */
     async destroy() {
-        await this.pupBrowser.close();
-        await this.authStrategy.destroy();
+        if (this.pupBrowser) {
+            await this.pupBrowser.close();
+        }
+        if (this.authStrategy && this.authStrategy.destroy) {
+            await this.authStrategy.destroy();
+        }
     }
 
     /**
