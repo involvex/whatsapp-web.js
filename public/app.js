@@ -2618,6 +2618,12 @@ class WhatsAppAIApp {
     
     async requestVoiceTranscription(messageId, audioData, mimeType) {
         try {
+            // Don't try to transcribe if there's no audio data
+            if (!audioData || audioData.length < 100) {
+                this.updateVoiceTranscription(messageId, "No audio data available");
+                return;
+            }
+            
             // Request transcription from the server
             const response = await fetch('/api/transcribe-voice', {
                 method: 'POST',
@@ -2631,23 +2637,32 @@ class WhatsAppAIApp {
                 }),
             });
             
-            if (!response.ok) {
-                throw new Error('Failed to request transcription');
-            }
+            // Even if response is not OK, try to get the error message
+            const result = await response.json().catch(e => ({ transcription: "Error parsing response" }));
             
-            const result = await response.json();
+            if (!response.ok) {
+                // If we have a transcription message in the error response, use it
+                if (result && result.transcription) {
+                    this.updateVoiceTranscription(messageId, result.transcription);
+                } else {
+                    this.updateVoiceTranscription(messageId, "Failed to transcribe audio");
+                }
+                return;
+            }
             
             // Update the transcription in the UI
             this.updateVoiceTranscription(messageId, result.transcription || "Could not transcribe audio");
             
             // Store the transcription with the message
-            this.storeVoiceTranscription(messageId, result.transcription);
+            if (result.transcription) {
+                this.storeVoiceTranscription(messageId, result.transcription);
+            }
             
         } catch (error) {
             console.error('Error requesting voice transcription:', error);
             
             // Show error in the UI
-            this.updateVoiceTranscription(messageId, "Could not transcribe audio");
+            this.updateVoiceTranscription(messageId, "Error transcribing audio");
         }
     }
     

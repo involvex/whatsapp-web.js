@@ -271,22 +271,40 @@ class WhatsAppAIClient {
                 const { messageId, audioData, mimeType } = req.body;
                 
                 if (!audioData) {
-                    return res.status(400).json({ error: 'No audio data provided' });
+                    console.log('Voice transcription request missing audio data');
+                    return res.status(400).json({ 
+                        error: 'No audio data provided',
+                        messageId,
+                        transcription: 'No audio data provided for transcription.' 
+                    });
                 }
                 
                 // Check if we have a very large payload
                 if (audioData.length > 1000000) { // Roughly 1MB in base64
+                    console.log(`Voice message too large: ${Math.round(audioData.length/1024)}KB`);
                     return res.status(413).json({ 
                         error: 'Audio data too large',
+                        messageId,
                         transcription: 'Audio too large to transcribe. Try a shorter message.' 
                     });
                 }
                 
                 console.log(`Transcribing voice message ${messageId} (${Math.round(audioData.length/1024)}KB)`);
                 
+                // Check if AI client is initialized
+                if (!this.aiClient) {
+                    console.log('AI client not initialized for voice transcription');
+                    return res.json({
+                        messageId,
+                        transcription: 'Voice transcription service unavailable.'
+                    });
+                }
+                
                 try {
                     // Use AI to generate a transcription/summary of the voice message
                     const transcription = await this.transcribeVoiceMessage(audioData, mimeType);
+                    
+                    console.log(`Transcription completed for message ${messageId}`);
                     
                     // Return the transcription
                     res.json({ messageId, transcription });
@@ -299,7 +317,11 @@ class WhatsAppAIClient {
                 }
             } catch (error) {
                 console.error('Error processing voice transcription request:', error);
-                res.status(500).json({ error: error.message });
+                res.status(500).json({ 
+                    error: error.message,
+                    messageId: req.body?.messageId || 'unknown',
+                    transcription: 'Error processing transcription request.' 
+                });
             }
         });
 
@@ -436,23 +458,36 @@ class WhatsAppAIClient {
                     return res.json({ profilePicUrl: this.cache.images.get(contactId) });
                 }
                 
+                // Format the contact ID properly for WhatsApp API
+                // If it doesn't have @c.us or @g.us suffix, add @c.us
+                const formattedId = contactId.includes('@') ? contactId : `${contactId}@c.us`;
+                
+                console.log(`Fetching profile picture for ${formattedId}`);
+                
                 let profilePicUrl;
                 try {
-                    profilePicUrl = await this.client.getProfilePicUrl(contactId);
+                    profilePicUrl = await this.client.getProfilePicUrl(formattedId);
+                    console.log(`Profile pic URL for ${formattedId}:`, profilePicUrl ? 'Found' : 'Not found');
                 } catch (error) {
-                    console.log(`Failed to get profile pic for ${contactId}:`, error);
+                    console.log(`Failed to get profile pic for ${formattedId}:`, error.message);
                     profilePicUrl = null;
                 }
                 
                 // Cache the result (even if null)
                 if (profilePicUrl) {
                     this.cache.images.set(contactId, profilePicUrl);
+                } else {
+                    // Use default placeholder URL if no profile picture is available
+                    profilePicUrl = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 212 212%22%3E%3Cpath fill=%22%2325D366%22 d=%22M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z%22/%3E%3C/svg%3E';
                 }
                 
                 res.json({ profilePicUrl });
             } catch (error) {
                 console.error('Error getting profile picture:', error);
-                res.status(500).json({ error: error.message });
+                res.status(500).json({ 
+                    error: error.message,
+                    profilePicUrl: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 212 212%22%3E%3Cpath fill=%22%2325D366%22 d=%22M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z%22/%3E%3C/svg%3E'
+                });
             }
         });
     }
