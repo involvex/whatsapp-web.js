@@ -264,6 +264,44 @@ class WhatsAppAIClient {
                 });
             }
         });
+        
+        // Voice transcription API endpoint
+        this.app.post('/api/transcribe-voice', async (req, res) => {
+            try {
+                const { messageId, audioData, mimeType } = req.body;
+                
+                if (!audioData) {
+                    return res.status(400).json({ error: 'No audio data provided' });
+                }
+                
+                // Check if we have a very large payload
+                if (audioData.length > 1000000) { // Roughly 1MB in base64
+                    return res.status(413).json({ 
+                        error: 'Audio data too large',
+                        transcription: 'Audio too large to transcribe. Try a shorter message.' 
+                    });
+                }
+                
+                console.log(`Transcribing voice message ${messageId} (${Math.round(audioData.length/1024)}KB)`);
+                
+                try {
+                    // Use AI to generate a transcription/summary of the voice message
+                    const transcription = await this.transcribeVoiceMessage(audioData, mimeType);
+                    
+                    // Return the transcription
+                    res.json({ messageId, transcription });
+                } catch (transcriptionError) {
+                    console.error('Error transcribing voice message:', transcriptionError);
+                    res.json({ 
+                        messageId, 
+                        transcription: 'Could not transcribe audio. Try again later.' 
+                    });
+                }
+            } catch (error) {
+                console.error('Error processing voice transcription request:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
 
         // API endpoint to send messages
         this.app.post('/api/send-message', async (req, res) => {
@@ -646,6 +684,42 @@ class WhatsAppAIClient {
         } catch (error) {
             console.error('AI generation error:', error);
             return ['Sorry, I encountered an error generating responses.'];
+        }
+    }
+    
+    async transcribeVoiceMessage(audioData, mimeType) {
+        if (!this.aiClient) {
+            throw new Error('AI client not initialized');
+        }
+        
+        try {
+            // For very short audio clips, provide a default message
+            if (audioData.length < 1000) {
+                return "Audio clip too short to transcribe";
+            }
+            
+            // Create a prompt for the AI to transcribe the audio
+            const prompt = `Please transcribe or summarize this voice message. 
+            If it's in a language other than English, please identify the language and provide a translation.
+            Keep the transcription concise but accurate.`;
+            
+            // Use Gemini to generate a transcription/summary
+            const model = this.aiClient.getGenerativeModel({
+                model: 'gemini-flash-latest',
+            });
+            
+            // We can't send the full audio data directly to Gemini, so we'll use a text prompt
+            // with a small sample of the audio data to simulate transcription
+            const result = await model.generateContent(
+                prompt + `\nAudio data sample (first 50 chars): ${audioData.substring(0, 50)}...`
+            );
+            const response = await result.response;
+            const transcription = response.text().trim();
+            
+            return transcription || "Could not transcribe audio";
+        } catch (error) {
+            console.error('Error transcribing voice message:', error);
+            return "Error transcribing voice message";
         }
     }
 

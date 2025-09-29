@@ -822,9 +822,11 @@ class WhatsAppAIApp {
                 // For chats
                 const chatItem = document.querySelector(`.chat-item[data-chat-id="${contactId}@c.us"]`);
                 if (chatItem) {
-                    const chat = this.chats.find(c => c.id === `${contactId}@c.us`);
-                    if (chat) {
-                        chat.profilePicUrl = data.profilePicUrl;
+                    if (Array.isArray(this.chats)) {
+                        const chat = this.chats.find(c => c.id === `${contactId}@c.us`);
+                        if (chat) {
+                            chat.profilePicUrl = data.profilePicUrl;
+                        }
                     }
                 }
             }
@@ -1154,15 +1156,27 @@ class WhatsAppAIApp {
         const { chatId, message, chatName } = data;
 
         // Update chat list if this is a new chat
-        if (!this.chats.has(chatId)) {
-            this.addChatToList({
+        const chatExists = Array.isArray(this.chats) 
+            ? this.chats.some(c => c.id === chatId)
+            : false;
+            
+        if (!chatExists) {
+            const newChat = {
                 id: chatId,
                 name: chatName,
                 lastMessage: message.body,
                 timestamp: message.timestamp * 1000,
                 unreadCount: 0,
-            });
-            this.chats.set(chatId, { name: chatName });
+            };
+            
+            this.addChatToList(newChat);
+            
+            // Update the chats array
+            if (Array.isArray(this.chats)) {
+                this.chats.push(newChat);
+            } else {
+                this.chats = [newChat];
+            }
         }
 
         // Add message to current chat if it's the active one
@@ -1521,10 +1535,14 @@ class WhatsAppAIApp {
     }
 
     updateChatHeader(chatId) {
-        const chat = this.chats.get(chatId);
         const chatNameEl = document.getElementById('chat-name');
         const chatStatusEl = document.getElementById('chat-status');
         
+        // Find chat in the array
+        const chat = Array.isArray(this.chats) 
+            ? this.chats.find(c => c.id === chatId)
+            : null;
+            
         if (chat) {
             chatNameEl.textContent = chat.name;
             // Show actual status instead of always "Online"
@@ -2214,8 +2232,9 @@ class WhatsAppAIApp {
     handleNewMessageNotification(message) {
         // Show notification for new messages (not from current user)
         if (!message.fromMe && this.currentChatId !== message.chatId) {
-            const chatName =
-                this.chats.get(message.chatId)?.name || 'Unknown Chat';
+            const chatName = Array.isArray(this.chats)
+                ? (this.chats.find(c => c.id === message.chatId)?.name || 'Unknown Chat')
+                : 'Unknown Chat';
             const senderName = message.fromName || 'Someone';
             const messagePreview = message.body
                 ? message.body.length > 50
