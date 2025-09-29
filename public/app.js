@@ -2521,7 +2521,6 @@ class WhatsAppAIApp {
             }
         }
     }
-    }
 
     renderMediaMessage(message) {
         const mediaUrl = message.mediaData
