@@ -58,6 +58,7 @@ class WhatsAppAIClient {
             messages: new Map(),
             contacts: new Map(),
             images: new Map(),
+            negativeImages: new Map(), // Cache for IDs that don't have profile pictures
             lastUpdated: new Map(),
         };
 
@@ -453,7 +454,24 @@ class WhatsAppAIClient {
             try {
                 const { contactId } = req.params;
                 
-                // Check cache first
+                // Default placeholder URL for fallback
+                const defaultProfilePic = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 212 212%22%3E%3Cpath fill=%22%2325D366%22 d=%22M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z%22/%3E%3C/svg%3E';
+                
+                // Check for empty contact ID
+                if (!contactId || contactId === 'undefined' || contactId === 'null') {
+                    return res.json({ profilePicUrl: defaultProfilePic });
+                }
+                
+                // Check negative cache first (for IDs we know don't have pictures)
+                if (this.cache.negativeImages && this.cache.negativeImages.has(contactId)) {
+                    const lastChecked = this.cache.negativeImages.get(contactId);
+                    // Only use negative cache for 5 minutes
+                    if (Date.now() - lastChecked < 5 * 60 * 1000) {
+                        return res.json({ profilePicUrl: defaultProfilePic });
+                    }
+                }
+                
+                // Check positive cache
                 if (this.cache.images.has(contactId)) {
                     return res.json({ profilePicUrl: this.cache.images.get(contactId) });
                 }
@@ -462,30 +480,45 @@ class WhatsAppAIClient {
                 // If it doesn't have @c.us or @g.us suffix, add @c.us
                 const formattedId = contactId.includes('@') ? contactId : `${contactId}@c.us`;
                 
-                console.log(`Fetching profile picture for ${formattedId}`);
+                // Only log if we're actually making a WhatsApp API call
+                // console.log(`Fetching profile picture for ${formattedId}`);
+                
+                // Check if client is ready
+                if (!this.client || !this.isReady) {
+                    // Client not ready, return default
+                    return res.json({ profilePicUrl: defaultProfilePic });
+                }
                 
                 let profilePicUrl;
                 try {
                     profilePicUrl = await this.client.getProfilePicUrl(formattedId);
-                    console.log(`Profile pic URL for ${formattedId}:`, profilePicUrl ? 'Found' : 'Not found');
+                    // Only log if found to reduce console spam
+                    if (profilePicUrl) {
+                        console.log(`Profile pic found for ${formattedId}`);
+                    }
                 } catch (error) {
-                    console.log(`Failed to get profile pic for ${formattedId}:`, error.message);
+                    // Don't log every error to reduce console spam
                     profilePicUrl = null;
                 }
                 
-                // Cache the result (even if null)
+                // Cache the result
                 if (profilePicUrl) {
                     this.cache.images.set(contactId, profilePicUrl);
                 } else {
-                    // Use default placeholder URL if no profile picture is available
-                    profilePicUrl = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 212 212%22%3E%3Cpath fill=%22%2325D366%22 d=%22M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z%22/%3E%3C/svg%3E';
+                    // Add to negative cache to avoid repeated requests for the same ID
+                    if (!this.cache.negativeImages) {
+                        this.cache.negativeImages = new Map();
+                    }
+                    this.cache.negativeImages.set(contactId, Date.now());
+                    
+                    // Use default placeholder
+                    profilePicUrl = defaultProfilePic;
                 }
                 
                 res.json({ profilePicUrl });
             } catch (error) {
                 console.error('Error getting profile picture:', error);
-                res.status(500).json({ 
-                    error: error.message,
+                res.json({ 
                     profilePicUrl: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 212 212%22%3E%3Cpath fill=%22%2325D366%22 d=%22M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z%22/%3E%3C/svg%3E'
                 });
             }

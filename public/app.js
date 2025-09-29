@@ -683,6 +683,24 @@ class WhatsAppAIApp {
         const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
         if (chatElement) {
             chatElement.classList.add('active');
+            
+            // Get profile picture from chat list if available
+            const chatAvatarEl = document.getElementById('chat-avatar');
+            const chatItemAvatar = chatElement.querySelector('.chat-avatar');
+            
+            if (chatAvatarEl && chatItemAvatar) {
+                // First, copy the avatar from the chat list to ensure immediate display
+                chatAvatarEl.innerHTML = chatItemAvatar.innerHTML;
+                
+                // Then, extract contact ID and fetch fresh profile picture
+                const contactId = chatId.split('@')[0];
+                if (contactId) {
+                    // Use a slight delay to avoid flickering
+                    setTimeout(() => {
+                        this.fetchProfilePicture(contactId, chatAvatarEl);
+                    }, 100);
+                }
+            }
         }
 
         this.currentChatId = chatId;
@@ -794,7 +812,42 @@ class WhatsAppAIApp {
     // Fetch profile picture from server
     async fetchProfilePicture(contactId, avatarElement) {
         try {
-            const response = await fetch(`/api/profile-pic/${contactId}`);
+            // Skip if no contact ID or avatar element
+            if (!contactId || !avatarElement) return;
+            
+            // Clean up contact ID (remove @c.us or @g.us if present)
+            const cleanContactId = contactId.includes('@') ? contactId.split('@')[0] : contactId;
+            
+            // Check if we already have a profile picture in this element
+            if (avatarElement.querySelector('img.profile-pic')) {
+                // Already has a profile picture, don't fetch again
+                return;
+            }
+            
+            // Add a loading state
+            const currentHTML = avatarElement.innerHTML;
+            const avatarColor = this.getAvatarColor(cleanContactId);
+            const isGroup = contactId.includes('@g.us');
+            
+            // Set a placeholder while loading
+            if (!avatarElement.querySelector('.profile-pic-placeholder')) {
+                avatarElement.innerHTML = isGroup 
+                    ? `<div class="group-avatar" style="background-color: ${avatarColor}"><i class="fas fa-users"></i></div>`
+                    : `<div class="profile-pic-placeholder" style="background-color: ${avatarColor}">${cleanContactId.charAt(0).toUpperCase()}</div>`;
+                
+                // Keep presence indicator if it exists
+                if (currentHTML.includes('presence-indicator')) {
+                    const presenceIndicator = document.createElement('div');
+                    presenceIndicator.innerHTML = currentHTML;
+                    const indicator = presenceIndicator.querySelector('.presence-indicator');
+                    if (indicator) {
+                        avatarElement.appendChild(indicator);
+                    }
+                }
+            }
+            
+            // Request profile picture from server
+            const response = await fetch(`/api/profile-pic/${cleanContactId}`);
             if (!response.ok) return;
             
             const data = await response.json();
@@ -802,30 +855,65 @@ class WhatsAppAIApp {
             if (data.profilePicUrl) {
                 // Update the avatar element
                 if (avatarElement) {
-                    avatarElement.innerHTML = `
-                        <img src="${data.profilePicUrl}" alt="Profile" class="profile-pic" 
-                            onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 212 212\\'%3E%3Cpath fill=\\'%2325D366\\' d=\\'M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z\\'/%3E%3C/svg%3E';" />
-                        ${avatarElement.querySelector('.presence-indicator')?.outerHTML || ''}
-                    `;
+                    // Create a new image element
+                    const img = document.createElement('img');
+                    img.src = data.profilePicUrl;
+                    img.alt = "Profile";
+                    img.className = "profile-pic";
+                    img.onerror = function() {
+                        this.onerror = null;
+                        this.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 212 212%22%3E%3Cpath fill=%22%2325D366%22 d=%22M106 0a106 106 0 100 212 106 106 0 000-212zm0 30a76 76 0 110 152 76 76 0 010-152zm0 30a46 46 0 100 92 46 46 0 000-92z%22/%3E%3C/svg%3E';
+                    };
+                    
+                    // Clear the avatar element but keep presence indicator
+                    const presenceIndicator = avatarElement.querySelector('.presence-indicator');
+                    avatarElement.innerHTML = '';
+                    avatarElement.appendChild(img);
+                    
+                    // Add back presence indicator if it exists
+                    if (presenceIndicator) {
+                        avatarElement.appendChild(presenceIndicator);
+                    }
                 }
                 
                 // Store the profile picture URL
                 // For contacts
-                const contactItem = document.querySelector(`.contact-item[data-contact-id="${contactId}"]`);
+                const contactItem = document.querySelector(`.contact-item[data-contact-id="${cleanContactId}"]`);
                 if (contactItem) {
-                    const contact = this.contacts.find(c => c.id === contactId);
-                    if (contact) {
-                        contact.profilePicUrl = data.profilePicUrl;
+                    if (Array.isArray(this.contacts)) {
+                        const contact = this.contacts.find(c => c.id === cleanContactId);
+                        if (contact) {
+                            contact.profilePicUrl = data.profilePicUrl;
+                        }
                     }
                 }
                 
                 // For chats
-                const chatItem = document.querySelector(`.chat-item[data-chat-id="${contactId}@c.us"]`);
+                const chatItem = document.querySelector(`.chat-item[data-chat-id="${cleanContactId}@c.us"]`);
                 if (chatItem) {
                     if (Array.isArray(this.chats)) {
-                        const chat = this.chats.find(c => c.id === `${contactId}@c.us`);
+                        const chat = this.chats.find(c => c.id === `${cleanContactId}@c.us`);
                         if (chat) {
                             chat.profilePicUrl = data.profilePicUrl;
+                        }
+                    }
+                }
+                
+                // Also update chat header if this is the current chat
+                if (this.currentChatId && (this.currentChatId === `${cleanContactId}@c.us` || this.currentChatId === cleanContactId)) {
+                    const chatAvatarEl = document.getElementById('chat-avatar');
+                    if (chatAvatarEl && chatAvatarEl !== avatarElement) {
+                        // Create a clone of the image for the chat header
+                        const headerImg = img.cloneNode(true);
+                        
+                        // Clear the avatar element but keep presence indicator
+                        const presenceIndicator = chatAvatarEl.querySelector('.presence-indicator');
+                        chatAvatarEl.innerHTML = '';
+                        chatAvatarEl.appendChild(headerImg);
+                        
+                        // Add back presence indicator if it exists
+                        if (presenceIndicator) {
+                            chatAvatarEl.appendChild(presenceIndicator);
                         }
                     }
                 }
@@ -1537,6 +1625,7 @@ class WhatsAppAIApp {
     updateChatHeader(chatId) {
         const chatNameEl = document.getElementById('chat-name');
         const chatStatusEl = document.getElementById('chat-status');
+        const chatAvatarEl = document.getElementById('chat-avatar');
         
         // Find chat in the array
         const chat = Array.isArray(this.chats) 
@@ -1551,6 +1640,24 @@ class WhatsAppAIApp {
             // Make chat name clickable to show details
             chatNameEl.style.cursor = 'pointer';
             chatNameEl.onclick = () => this.showChatDetails(chatId);
+            
+            // Update profile picture if available
+            if (chatAvatarEl) {
+                // Extract the contact ID from the chat ID (remove @c.us or @g.us)
+                const contactId = chatId.split('@')[0];
+                
+                // Fetch profile picture
+                this.fetchProfilePicture(contactId, chatAvatarEl);
+                
+                // Set a default avatar color based on chat name
+                const avatarColor = this.getAvatarColor(chat.name);
+                if (!chatAvatarEl.querySelector('img')) {
+                    const isGroup = chatId.includes('@g.us');
+                    chatAvatarEl.innerHTML = isGroup 
+                        ? `<div class="group-avatar" style="background-color: ${avatarColor}"><i class="fas fa-users"></i></div>`
+                        : `<div class="profile-pic-placeholder" style="background-color: ${avatarColor}">${chat.name.charAt(0)}</div>`;
+                }
+            }
         } else {
             // Try to find chat in the current chat list
             const chatItem = document.querySelector(
@@ -1563,6 +1670,21 @@ class WhatsAppAIApp {
                 chatStatusEl.textContent = 'Click name for details';
                 chatNameEl.style.cursor = 'pointer';
                 chatNameEl.onclick = () => this.showChatDetails(chatId);
+                
+                // Copy profile picture from chat list if available
+                if (chatAvatarEl) {
+                    const chatItemAvatar = chatItem.querySelector('.chat-avatar');
+                    if (chatItemAvatar) {
+                        chatAvatarEl.innerHTML = chatItemAvatar.innerHTML;
+                    } else {
+                        // Set default avatar
+                        const avatarColor = this.getAvatarColor(chatName);
+                        const isGroup = chatId.includes('@g.us');
+                        chatAvatarEl.innerHTML = isGroup 
+                            ? `<div class="group-avatar" style="background-color: ${avatarColor}"><i class="fas fa-users"></i></div>`
+                            : `<div class="profile-pic-placeholder" style="background-color: ${avatarColor}">${chatName.charAt(0)}</div>`;
+                    }
+                }
             }
         }
     }
