@@ -387,6 +387,36 @@ class WhatsAppAIClient {
                 res.status(500).json({ error: 'Failed to get chat details' });
             }
         });
+        
+        // Profile picture endpoint
+        this.app.get('/api/profile-pic/:contactId', async (req, res) => {
+            try {
+                const { contactId } = req.params;
+                
+                // Check cache first
+                if (this.cache.images.has(contactId)) {
+                    return res.json({ profilePicUrl: this.cache.images.get(contactId) });
+                }
+                
+                let profilePicUrl;
+                try {
+                    profilePicUrl = await this.client.getProfilePicUrl(contactId);
+                } catch (error) {
+                    console.log(`Failed to get profile pic for ${contactId}:`, error);
+                    profilePicUrl = null;
+                }
+                
+                // Cache the result (even if null)
+                if (profilePicUrl) {
+                    this.cache.images.set(contactId, profilePicUrl);
+                }
+                
+                res.json({ profilePicUrl });
+            } catch (error) {
+                console.error('Error getting profile picture:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
     }
 
     setupSocketIO() {

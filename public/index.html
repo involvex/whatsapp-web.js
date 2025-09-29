@@ -100,6 +100,14 @@
                             </button>
                             <button
                                 class="action-btn"
+                                id="settings-btn"
+                                title="Settings"
+                                aria-label="Settings"
+                            >
+                                <i class="fas fa-cog" aria-hidden="true"></i>
+                            </button>
+                            <button
+                                class="action-btn"
                                 id="new-chat-btn"
                                 title="New Chat"
                                 aria-label="New Chat"
@@ -577,6 +585,74 @@
                 </div>
             </div>
 
+            <!-- Settings Modal -->
+            <div class="modal hidden" id="settings-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Settings</h3>
+                        <button class="close-modal-btn" id="close-settings-modal">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <!-- Theme Settings -->
+                        <div class="settings-section">
+                            <h4>Appearance</h4>
+                            <div class="setting-item">
+                                <label for="theme-select">Theme</label>
+                                <div class="setting-control">
+                                    <select id="theme-select" class="form-input">
+                                        <option value="dark">Dark</option>
+                                        <option value="light">Light</option>
+                                        <option value="system">System Default</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Language Settings -->
+                        <div class="settings-section">
+                            <h4>Language</h4>
+                            <div class="setting-item">
+                                <label for="language-select">Interface Language</label>
+                                <div class="setting-control">
+                                    <select id="language-select" class="form-input">
+                                        <option value="en">English</option>
+                                        <option value="de">Deutsch (German)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Notification Settings -->
+                        <div class="settings-section">
+                            <h4>Notifications</h4>
+                            <div class="setting-item">
+                                <label for="notification-toggle">Enable Notifications</label>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notification-toggle" checked>
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="setting-item">
+                                <label for="sound-toggle">Notification Sound</label>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="sound-toggle" checked>
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn primary-btn" id="save-settings-btn">Save</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Status Indicator -->
             <div id="status-indicator" class="status-indicator">
                 <div class="status-dot"></div>
@@ -585,6 +661,7 @@
         </div>
 
         <script src="/socket.io/socket.io.js"></script>
+        <script src="/js/languages.js"></script>
         <script src="/app.js"></script>
     </body>
 </html>

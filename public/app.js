@@ -8,6 +8,13 @@ class WhatsAppAIApp {
         this.isConnected = false;
         this.pinnedChats = new Set(JSON.parse(localStorage.getItem('pinnedChats') || '[]'));
         this.darkMode = localStorage.getItem('darkMode') !== 'false'; // Default to dark mode
+        
+        // Language settings
+        this.currentLanguage = localStorage.getItem('language') || 'en';
+        this.translations = window.languages || {
+            en: {}, // Default English fallback
+            de: {}  // German fallback
+        };
 
         this.initializeApp();
     }
@@ -16,10 +23,13 @@ class WhatsAppAIApp {
         // Apply theme before anything else to avoid flash of wrong theme
         this.applyTheme();
         
+        // Apply language before setting up event listeners
+        this.applyLanguage();
+        
         this.setupEventListeners();
         this.connectToServer();
         this.requestNotificationPermission();
-        this.updateStatus('Connecting to server...');
+        this.updateStatus(this.translate('connecting'));
 
         // Add periodic data check
         this.startDataCheck();
@@ -33,6 +43,93 @@ class WhatsAppAIApp {
                 }
             }, 1000);
         });
+    }
+    
+    // Language management
+    translate(key, fallback) {
+        const translation = this.translations[this.currentLanguage];
+        if (translation && translation[key]) {
+            return translation[key];
+        }
+        
+        // Try English as fallback
+        if (this.currentLanguage !== 'en' && this.translations.en && this.translations.en[key]) {
+            return this.translations.en[key];
+        }
+        
+        // Return the provided fallback or the key itself
+        return fallback || key;
+    }
+    
+    applyLanguage() {
+        // Set the language selector value
+        const languageSelect = document.getElementById('language-select');
+        if (languageSelect) {
+            languageSelect.value = this.currentLanguage;
+        }
+        
+        // Update all translatable elements
+        this.updateUITranslations();
+    }
+    
+    changeLanguage(language) {
+        if (language && this.translations[language]) {
+            this.currentLanguage = language;
+            localStorage.setItem('language', language);
+            this.updateUITranslations();
+            return true;
+        }
+        return false;
+    }
+    
+    updateUITranslations() {
+        // Update page title
+        document.title = this.translate('appTitle', 'WhatsApp AI Web');
+        
+        // Update placeholders
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) {
+            searchInput.placeholder = this.translate('search', 'Search or start new chat');
+        }
+        
+        const messageInput = document.getElementById('message-input');
+        if (messageInput) {
+            messageInput.placeholder = this.translate('typeMessage', 'Type a message');
+        }
+        
+        // Update buttons
+        document.querySelectorAll('[data-i18n]').forEach(element => {
+            const key = element.getAttribute('data-i18n');
+            if (key) {
+                element.textContent = this.translate(key);
+            }
+        });
+        
+        // Update sort buttons
+        const sortRecentBtn = document.getElementById('sort-recent');
+        const sortUnreadBtn = document.getElementById('sort-unread');
+        const sortNameBtn = document.getElementById('sort-name');
+        
+        if (sortRecentBtn) {
+            sortRecentBtn.querySelector('span').textContent = this.translate('sortRecent', 'Recent');
+        }
+        if (sortUnreadBtn) {
+            sortUnreadBtn.querySelector('span').textContent = this.translate('sortUnread', 'Unread');
+        }
+        if (sortNameBtn) {
+            sortNameBtn.querySelector('span').textContent = this.translate('sortName', 'Name');
+        }
+        
+        // Update modals
+        const scheduleModalTitle = document.querySelector('#schedule-modal .modal-header h3');
+        if (scheduleModalTitle) {
+            scheduleModalTitle.textContent = this.translate('scheduleMessage', 'Schedule Message');
+        }
+        
+        const settingsModalTitle = document.querySelector('#settings-modal .modal-header h3');
+        if (settingsModalTitle) {
+            settingsModalTitle.textContent = this.translate('settings', 'Settings');
+        }
     }
     
     // Theme management
@@ -58,6 +155,43 @@ class WhatsAppAIApp {
         const themeToggleBtn = document.getElementById('theme-toggle-btn');
         if (themeToggleBtn) {
             themeToggleBtn.addEventListener('click', () => this.toggleTheme());
+        }
+        
+        // Settings button
+        const settingsBtn = document.getElementById('settings-btn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => this.showSettingsModal());
+        }
+        
+        // Close settings modal
+        const closeSettingsBtn = document.getElementById('close-settings-modal');
+        if (closeSettingsBtn) {
+            closeSettingsBtn.addEventListener('click', () => this.hideSettingsModal());
+        }
+        
+        // Save settings button
+        const saveSettingsBtn = document.getElementById('save-settings-btn');
+        if (saveSettingsBtn) {
+            saveSettingsBtn.addEventListener('click', () => this.saveSettings());
+        }
+        
+        // Language select
+        const languageSelect = document.getElementById('language-select');
+        if (languageSelect) {
+            languageSelect.addEventListener('change', () => {
+                this.changeLanguage(languageSelect.value);
+            });
+        }
+        
+        // Theme select
+        const themeSelect = document.getElementById('theme-select');
+        if (themeSelect) {
+            themeSelect.value = this.darkMode ? 'dark' : 'light';
+            themeSelect.addEventListener('change', () => {
+                this.darkMode = themeSelect.value === 'dark';
+                this.applyTheme();
+                localStorage.setItem('darkMode', this.darkMode);
+            });
         }
         
         // Sort buttons
@@ -3954,6 +4088,66 @@ class WhatsAppAIApp {
             console.error('Error sending scheduled message:', error);
             this.showNotification('Failed to send scheduled message', 'error');
         }
+    }
+    
+    // Settings modal methods
+    showSettingsModal() {
+        const modal = document.getElementById('settings-modal');
+        modal.classList.remove('hidden');
+        
+        // Set current values
+        const themeSelect = document.getElementById('theme-select');
+        if (themeSelect) {
+            themeSelect.value = this.darkMode ? 'dark' : 'light';
+        }
+        
+        const languageSelect = document.getElementById('language-select');
+        if (languageSelect) {
+            languageSelect.value = this.currentLanguage;
+        }
+    }
+    
+    hideSettingsModal() {
+        const modal = document.getElementById('settings-modal');
+        modal.classList.add('hidden');
+    }
+    
+    saveSettings() {
+        // Get values from form
+        const themeSelect = document.getElementById('theme-select');
+        const languageSelect = document.getElementById('language-select');
+        const notificationToggle = document.getElementById('notification-toggle');
+        const soundToggle = document.getElementById('sound-toggle');
+        
+        // Apply theme
+        if (themeSelect) {
+            const isDarkMode = themeSelect.value === 'dark';
+            if (isDarkMode !== this.darkMode) {
+                this.darkMode = isDarkMode;
+                localStorage.setItem('darkMode', this.darkMode);
+                this.applyTheme();
+            }
+        }
+        
+        // Apply language
+        if (languageSelect && languageSelect.value !== this.currentLanguage) {
+            this.changeLanguage(languageSelect.value);
+        }
+        
+        // Save notification settings
+        if (notificationToggle) {
+            localStorage.setItem('notifications', notificationToggle.checked);
+        }
+        
+        if (soundToggle) {
+            localStorage.setItem('notificationSound', soundToggle.checked);
+        }
+        
+        // Hide modal
+        this.hideSettingsModal();
+        
+        // Show confirmation
+        this.showNotification(this.translate('settingsSaved', 'Settings saved'), 'success');
     }
 }
 
