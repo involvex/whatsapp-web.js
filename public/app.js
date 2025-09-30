@@ -559,10 +559,16 @@ class WhatsAppAIApp {
 
 
     renderChatList(chats = []) {
+        console.log('renderChatList called with:', chats.length, 'chats');
         const chatList = document.getElementById('chat-list');
+        if (!chatList) {
+            console.error('chat-list element not found!');
+            return;
+        }
         chatList.innerHTML = '';
 
         if (chats.length === 0) {
+            console.log('No chats to render, showing no-chats message');
             chatList.innerHTML = `
                 <div class="no-chats">
                     <p>No chats found</p>
@@ -3204,11 +3210,14 @@ class WhatsAppAIApp {
     }
 
     async loadChats() {
+        console.log('loadChats called, isConnected:', this.isConnected);
         if (this.isConnected) {
             try {
                 console.log('Loading chats...');
                 const response = await fetch('/api/chats');
+                console.log('Response status:', response.status);
                 const chats = await response.json();
+                console.log('Received chats:', chats);
                 
                 // Store chats in memory for sorting
                 this.chats = chats;
@@ -3220,6 +3229,8 @@ class WhatsAppAIApp {
             } catch (error) {
                 console.error('Error auto-loading chats:', error);
             }
+        } else {
+            console.log('Not connected, skipping chat load');
         }
     }
     
