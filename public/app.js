@@ -3780,6 +3780,136 @@ class WhatsAppAIApp {
             liveRegion.textContent = '';
         }, 3000);
     }
+
+    setupScheduleModal() {
+        // Close schedule modal
+        const closeScheduleBtn = document.getElementById('close-schedule-modal');
+        if (closeScheduleBtn) {
+            closeScheduleBtn.addEventListener('click', () => this.hideScheduleModal());
+        }
+
+        // Schedule message button
+        const scheduleMessageBtn = document.getElementById('schedule-message-btn');
+        if (scheduleMessageBtn) {
+            scheduleMessageBtn.addEventListener('click', () => this.scheduleMessage());
+        }
+
+        // Cancel schedule button
+        const cancelScheduleBtn = document.getElementById('cancel-schedule-btn');
+        if (cancelScheduleBtn) {
+            cancelScheduleBtn.addEventListener('click', () => this.hideScheduleModal());
+        }
+    }
+
+    showScheduleModal() {
+        const modal = document.getElementById('schedule-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+    }
+
+    hideScheduleModal() {
+        const modal = document.getElementById('schedule-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+
+    scheduleMessage() {
+        const messageInput = document.getElementById('message-input');
+        const scheduleDate = document.getElementById('schedule-date');
+        const scheduleTime = document.getElementById('schedule-time');
+        
+        if (!messageInput || !scheduleDate || !scheduleTime) {
+            return;
+        }
+
+        const message = messageInput.value.trim();
+        const date = scheduleDate.value;
+        const time = scheduleTime.value;
+
+        if (!message || !date || !time) {
+            this.showNotification('Please fill in all fields', 'error');
+            return;
+        }
+
+        const scheduledDateTime = new Date(`${date}T${time}`);
+        const now = new Date();
+
+        if (scheduledDateTime <= now) {
+            this.showNotification('Please select a future date and time', 'error');
+            return;
+        }
+
+        const scheduledMessage = {
+            id: Date.now().toString(),
+            chatId: this.currentChatId,
+            message: message,
+            scheduledFor: scheduledDateTime.toISOString(),
+            createdAt: now.toISOString()
+        };
+
+        this.scheduledMessages.push(scheduledMessage);
+        this.saveScheduledMessages();
+        
+        // Clear the message input
+        messageInput.value = '';
+        
+        this.hideScheduleModal();
+        this.showNotification('Message scheduled successfully', 'success');
+    }
+
+    loadScheduledMessages() {
+        try {
+            const stored = localStorage.getItem('scheduledMessages');
+            return stored ? JSON.parse(stored) : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    saveScheduledMessages() {
+        try {
+            localStorage.setItem('scheduledMessages', JSON.stringify(this.scheduledMessages));
+        } catch (error) {
+            console.error('Error saving scheduled messages:', error);
+        }
+    }
+
+    startScheduledMessageChecker() {
+        setInterval(() => {
+            this.checkScheduledMessages();
+        }, 60000); // Check every minute
+    }
+
+    checkScheduledMessages() {
+        const now = new Date();
+        const messagesToSend = this.scheduledMessages.filter(msg => {
+            const scheduledTime = new Date(msg.scheduledFor);
+            return scheduledTime <= now;
+        });
+
+        messagesToSend.forEach(msg => {
+            this.sendScheduledMessage(msg);
+        });
+    }
+
+    sendScheduledMessage(scheduledMessage) {
+        // Remove from scheduled messages
+        this.scheduledMessages = this.scheduledMessages.filter(msg => msg.id !== scheduledMessage.id);
+        this.saveScheduledMessages();
+
+        // Send the message
+        if (this.currentChatId === scheduledMessage.chatId) {
+            this.sendMessage(scheduledMessage.message);
+        } else {
+            // Switch to the chat and send the message
+            this.selectChat(scheduledMessage.chatId);
+            setTimeout(() => {
+                this.sendMessage(scheduledMessage.message);
+            }, 1000);
+        }
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
