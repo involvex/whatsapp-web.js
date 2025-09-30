@@ -810,6 +810,28 @@ class WhatsAppAIApp {
         return div.innerHTML;
     }
     
+    // Helper method to format timestamps
+    formatTime(timestamp) {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffInHours = (now - date) / (1000 * 60 * 60);
+        
+        if (diffInHours < 24) {
+            // Today - show time
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } else if (diffInHours < 48) {
+            // Yesterday
+            return 'Yesterday';
+        } else if (diffInHours < 168) {
+            // This week - show day
+            return date.toLocaleDateString([], { weekday: 'short' });
+        } else {
+            // Older - show date
+            return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        }
+    }
+    
     // Generate a color based on the name for profile picture placeholders
     getDefaultProfilePic(name) {
         // Generate a consistent color based on the name
