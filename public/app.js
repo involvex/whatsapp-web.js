@@ -2672,7 +2672,7 @@ class WhatsAppAIApp {
         
         // Check if this is a group message and not from the current user
         const isGroupMessage = this.currentChatId && this.currentChatId.endsWith('@g.us') && !message.fromMe;
-        const senderName = isGroupMessage ? (message.author || message.senderName || 'Unknown') : '';
+        let senderName = isGroupMessage ? (message.author || message.senderName || 'Unknown') : '';
         
         // If we have a sender ID but no name, try to find the contact name
         if (isGroupMessage && message.author && (!senderName || senderName === 'Unknown')) {
@@ -2931,22 +2931,43 @@ class WhatsAppAIApp {
     }
 
     renderMediaMessage(message) {
-        const mediaUrl = message.mediaData
-            ? `data:${message.type};base64,${message.mediaData}`
-            : '';
-        const isImage =
-            message.type === 'image' ||
-            message.media?.mimetype?.startsWith('image/');
+        // Try multiple sources for media data
+        let mediaData = message.mediaData || message.body || '';
+        let mimeType = message.media?.mimetype || message.type || 'image/jpeg';
+        
+        // If we have media data, create the data URL
+        const mediaUrl = mediaData ? `data:${mimeType};base64,${mediaData}` : '';
+        
+        const isImage = message.type === 'image' || mimeType.startsWith('image/');
 
         if (isImage) {
-            return `
-                <div class="image-preview-container">
-                    <img src="${mediaUrl}" alt="Image" class="message-image">
-                    <div class="image-overlay">
-                        <i class="fas fa-expand"></i>
+            if (mediaUrl) {
+                return `
+                    <div class="image-preview-container">
+                        <img src="${mediaUrl}" alt="Image" class="message-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="image-fallback" style="display: none; width: 200px; height: 150px; background: #2a3942; border-radius: 8px; align-items: center; justify-content: center; color: #8696a0;">
+                            <div style="text-align: center;">
+                                <i class="fas fa-image" style="font-size: 24px; margin-bottom: 8px;"></i>
+                                <div>Image not available</div>
+                            </div>
+                        </div>
+                        <div class="image-overlay">
+                            <i class="fas fa-expand"></i>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            } else {
+                return `
+                    <div class="image-preview-container">
+                        <div class="image-fallback" style="width: 200px; height: 150px; background: #2a3942; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #8696a0;">
+                            <div style="text-align: center;">
+                                <i class="fas fa-image" style="font-size: 24px; margin-bottom: 8px;"></i>
+                                <div>Image not available</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
         } else {
             return `
                 <div class="media-message">
@@ -3467,201 +3488,271 @@ class WhatsAppAIApp {
     // Language detection
     detectLanguage(messages) {
         const text = messages
-            .slice(-5)
+            .slice(-10) // Use more messages for better detection
             .map((msg) => msg.body)
-            .join(' ');
+            .filter(body => body && body.trim().length > 0)
+            .join(' ')
+            .toLowerCase();
 
-        // Simple language detection based on common words
+        if (!text || text.length < 10) {
+            return 'English'; // Default fallback
+        }
+
+        // Enhanced language detection with more patterns and scoring
         const languagePatterns = {
             German: [
-                'der',
-                'die',
-                'das',
-                'und',
-                'ist',
-                'ich',
-                'du',
-                'er',
-                'sie',
-                'es',
-                'wir',
-                'ihr',
-                'sie',
-                'haben',
-                'sein',
-                'werden',
-                'können',
-                'müssen',
-                'sollen',
-                'wollen',
-                'dürfen',
+                'der', 'die', 'das', 'und', 'ist', 'ich', 'du', 'er', 'sie', 'es', 'wir', 'ihr',
+                'haben', 'sein', 'werden', 'können', 'müssen', 'sollen', 'wollen', 'dürfen',
+                'nicht', 'aber', 'oder', 'auch', 'noch', 'schon', 'immer', 'nie', 'manchmal',
+                'heute', 'gestern', 'morgen', 'hier', 'dort', 'da', 'wo', 'was', 'wer', 'wie',
+                'warum', 'wann', 'wenn', 'dass', 'weil', 'damit', 'obwohl', 'falls', 'sobald'
             ],
             Spanish: [
-                'el',
-                'la',
-                'los',
-                'las',
-                'de',
-                'del',
-                'en',
-                'con',
-                'por',
-                'para',
-                'que',
-                'como',
-                'cuando',
-                'donde',
-                'porque',
-                'si',
-                'no',
-                'sí',
-                'muy',
-                'más',
-                'menos',
-                'todo',
-                'nada',
-                'algo',
+                'el', 'la', 'los', 'las', 'de', 'del', 'en', 'con', 'por', 'para', 'que', 'como',
+                'cuando', 'donde', 'porque', 'si', 'no', 'sí', 'muy', 'más', 'menos', 'todo',
+                'nada', 'algo', 'también', 'solo', 'sólo', 'ya', 'aún', 'todavía', 'siempre',
+                'nunca', 'a veces', 'hoy', 'ayer', 'mañana', 'aquí', 'allí', 'donde', 'qué',
+                'quién', 'cómo', 'por qué', 'cuándo', 'si', 'que', 'porque', 'aunque', 'mientras'
             ],
             French: [
-                'le',
-                'la',
-                'les',
-                'de',
-                'du',
-                'des',
-                'en',
-                'avec',
-                'pour',
-                'que',
-                'comme',
-                'quand',
-                'où',
-                'pourquoi',
-                'si',
-                'non',
-                'oui',
-                'très',
-                'plus',
-                'moins',
-                'tout',
-                'rien',
-                'quelque',
+                'le', 'la', 'les', 'de', 'du', 'des', 'en', 'avec', 'pour', 'que', 'comme',
+                'quand', 'où', 'pourquoi', 'si', 'non', 'oui', 'très', 'plus', 'moins', 'tout',
+                'rien', 'quelque', 'aussi', 'seulement', 'déjà', 'encore', 'toujours', 'jamais',
+                'parfois', 'aujourd\'hui', 'hier', 'demain', 'ici', 'là', 'où', 'quoi', 'qui',
+                'comment', 'pourquoi', 'quand', 'si', 'que', 'parce que', 'bien que', 'pendant'
             ],
             Italian: [
-                'il',
-                'la',
-                'lo',
-                'gli',
-                'le',
-                'di',
-                'del',
-                'della',
-                'dei',
-                'delle',
-                'in',
-                'con',
-                'per',
-                'che',
-                'come',
-                'quando',
-                'dove',
-                'perché',
-                'se',
-                'no',
-                'sì',
-                'molto',
-                'più',
-                'meno',
-                'tutto',
-                'niente',
-                'qualcosa',
+                'il', 'la', 'lo', 'gli', 'le', 'di', 'da', 'in', 'con', 'per', 'che', 'come',
+                'quando', 'dove', 'perché', 'se', 'no', 'sì', 'molto', 'più', 'meno', 'tutto',
+                'niente', 'qualcosa', 'anche', 'solo', 'già', 'ancora', 'sempre', 'mai',
+                'a volte', 'oggi', 'ieri', 'domani', 'qui', 'là', 'dove', 'cosa', 'chi',
+                'come', 'perché', 'quando', 'se', 'che', 'perché', 'benché', 'durante'
             ],
+            English: [
+                'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+                'by', 'from', 'up', 'about', 'into', 'through', 'during', 'before', 'after',
+                'above', 'below', 'between', 'among', 'is', 'are', 'was', 'were', 'be', 'been',
+                'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+                'should', 'may', 'might', 'must', 'can', 'shall', 'this', 'that', 'these', 'those'
+            ]
+        };
+
+        // Calculate scores for each language
+        const scores = {};
+        for (const [language, patterns] of Object.entries(languagePatterns)) {
+            scores[language] = 0;
+            for (const pattern of patterns) {
+                const regex = new RegExp(`\\b${pattern}\\b`, 'gi');
+                const matches = text.match(regex);
+                if (matches) {
+                    scores[language] += matches.length;
+                }
+            }
+        }
+
+        // Find the language with the highest score
+        let detectedLanguage = 'English';
+        let maxScore = 0;
+        
+        for (const [language, score] of Object.entries(scores)) {
+            if (score > maxScore) {
+                maxScore = score;
+                detectedLanguage = language;
+            }
+        }
+
+        // If no clear winner, default to English
+        if (maxScore < 2) {
+            detectedLanguage = 'English';
+        }
+
+        return detectedLanguage;
+    }
+
+    async generateAIPrompts() {
+        if (!this.currentChatId) {
+            this.showNotification('Please select a chat first', 'info');
+            return;
+        }
+
+        try {
+            // Get recent messages for context
+            const response = await fetch(`/api/chat/${this.currentChatId}`);
+            const messages = await response.json();
+
+            if (messages.length === 0) {
+                this.showDefaultPrompts();
+                return;
+            }
+
+            // Detect language from recent messages
+            const detectedLanguage = this.detectLanguage(messages);
+            console.log('Detected chat language:', detectedLanguage);
+
+            // Limit context to prevent payload too large error
+            // Only use last 5 messages and truncate each message to 100 characters
+            const context = messages
+                .slice(-5)
+                .map((msg) => {
+                    const body = msg.body ? msg.body.substring(0, 100) : '';
+                    return `${msg.fromMe ? 'You' : 'Other'}: ${body}`;
+                })
+                .join('\n');
+
+            const promptRequest = {
+                chatId: this.currentChatId,
+                message: `Generate 5 helpful response suggestions in ${detectedLanguage}`,
+                context: context,
+                language: detectedLanguage,
+            };
+
+            const aiResponse = await fetch('/api/generate-ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(promptRequest),
+            });
+
+            if (!aiResponse.ok) {
+                console.error('AI response error:', aiResponse.status, aiResponse.statusText);
+                this.showDefaultPrompts(detectedLanguage);
+                return;
+            }
+
+            const data = await aiResponse.json();
+
+            if (data.responses && data.responses.length > 0) {
+                this.displayAIPrompts(data.responses.slice(0, 5));
+            } else {
+                this.showDefaultPrompts(detectedLanguage);
+            }
+        } catch (error) {
+            console.error('Error generating AI prompts:', error);
+            this.showDefaultPrompts();
+        }
+    }
+
+    showDefaultPrompts(language = 'English') {
+        const defaultPrompts = {
+            English: [
+                'How are you?',
+                'What\'s up?',
+                'Thanks!',
+                'See you later',
+                '👍',
+            ],
+            German: [
+                'Wie geht\'s?',
+                'Was ist los?',
+                'Danke!',
+                'Bis später',
+                '👍',
+            ],
+            Spanish: [
+                '¿Cómo estás?',
+                '¿Qué tal?',
+                '¡Gracias!',
+                'Hasta luego',
+                '👍',
+            ],
+            French: [
+                'Comment ça va?',
+                'Quoi de neuf?',
+                'Merci!',
+                'À plus tard',
+                '👍',
+            ],
+            Italian: ['Come stai?', 'Che succede?', 'Grazie!', 'A dopo', '👍'],
             Portuguese: [
-                'o',
-                'a',
-                'os',
-                'as',
-                'de',
-                'do',
-                'da',
-                'dos',
-                'das',
-                'em',
-                'com',
-                'por',
-                'para',
-                'que',
-                'como',
-                'quando',
-                'onde',
-                'porque',
-                'se',
-                'não',
-                'sim',
-                'muito',
-                'mais',
-                'menos',
-                'tudo',
-                'nada',
-                'algo',
+                'Como vai?',
+                'O que há?',
+                'Obrigado!',
+                'Até logo',
+                '👍',
             ],
             Dutch: [
-                'de',
-                'het',
-                'een',
-                'van',
-                'in',
-                'op',
-                'met',
-                'voor',
-                'door',
-                'over',
-                'onder',
-                'tussen',
-                'naast',
-                'achter',
-                'voor',
-                'bij',
-                'aan',
-                'uit',
-                'naar',
-                'tot',
-                'vanaf',
-                'sinds',
-                'tijdens',
-                'gedurende',
+                'Hoe gaat het?',
+                'Wat is er?',
+                'Bedankt!',
+                'Tot later',
+                '👍',
             ],
             Russian: [
-                'и',
-                'в',
-                'на',
-                'с',
-                'по',
-                'для',
-                'от',
-                'до',
-                'из',
-                'к',
-                'у',
-                'о',
-                'об',
-                'за',
-                'под',
-                'над',
-                'между',
-                'через',
-                'без',
-                'против',
-                'вокруг',
-                'около',
-                'возле',
-                'рядом',
+                'Как дела?',
+                'Что нового?',
+                'Спасибо!',
+                'До свидания',
+                '👍',
             ],
-            Chinese: [
-                '的',
-                '了',
-                '在',
-                '是',
+            Chinese: ['你好吗？', '怎么样？', '谢谢！', '再见', '👍'],
+            Japanese: ['元気ですか？', 'どうですか？', 'ありがとう！', 'また後で', '👍'],
+        };
+
+        const prompts = defaultPrompts[language] || defaultPrompts.English;
+        this.displayAIPrompts(prompts);
+    }
+
+    displayAIPrompts(prompts) {
+        const container = document.getElementById('ai-prompts-list');
+        container.innerHTML = '';
+
+        prompts.forEach((prompt) => {
+            const button = document.createElement('button');
+            button.className = 'ai-prompt-btn';
+            button.textContent = prompt;
+            container.appendChild(button);
+        });
+    }
+
+    useAIPrompt(prompt) {
+        const messageInput = document.getElementById('message-input');
+        messageInput.value = prompt;
+        messageInput.focus();
+        this.hideAIPrompts();
+
+        // Enable send button
+        const sendBtn = document.getElementById('send-btn');
+        sendBtn.disabled = false;
+    }
+
+    hideAIPrompts() {
+        const container = document.getElementById('ai-prompts-container');
+        const btn = document.getElementById('ai-prompts-btn');
+
+        container.style.display = 'none';
+        btn.classList.remove('active');
+        btn.setAttribute('aria-expanded', 'false');
+        
+        // Announce to screen readers
+        this.announceToScreenReader('AI suggestions are now hidden');
+    }
+    
+    // Helper method for screen reader announcements
+    announceToScreenReader(message) {
+        // Create or get the live region
+        let liveRegion = document.getElementById('screen-reader-announcer');
+        
+        if (!liveRegion) {
+            liveRegion = document.createElement('div');
+            liveRegion.id = 'screen-reader-announcer';
+            liveRegion.setAttribute('aria-live', 'polite');
+            liveRegion.setAttribute('aria-atomic', 'true');
+            liveRegion.className = 'sr-only';
+            document.body.appendChild(liveRegion);
+        }
+        
+        // Set the message
+        liveRegion.textContent = message;
+        
+        // Clear after a short delay
+        setTimeout(() => {
+            liveRegion.textContent = '';
+        }, 3000);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    new WhatsAppAIApp();
+});
                 '我',
                 '你',
                 '他',
