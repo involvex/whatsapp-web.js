@@ -272,7 +272,7 @@ class WhatsAppAIClient {
                 const { messageId, audioData, mimeType } = req.body;
                 
                 if (!audioData) {
-                    console.log('Voice transcription request missing audio data');
+                    // Silent error handling - no console logs
                     return res.status(400).json({ 
                         error: 'No audio data provided',
                         messageId,
@@ -280,21 +280,19 @@ class WhatsAppAIClient {
                     });
                 }
                 
-                // Check if we have a very large payload
-                if (audioData.length > 1000000) { // Roughly 1MB in base64
-                    console.log(`Voice message too large: ${Math.round(audioData.length/1024)}KB`);
+                // Check if we have a very large payload - increase limit to 2MB
+                const sizeKB = Math.round(audioData.length/1024);
+                if (audioData.length > 2000000) { // Roughly 2MB in base64
+                    // Silent error handling - no console logs
                     return res.status(413).json({ 
                         error: 'Audio data too large',
                         messageId,
-                        transcription: 'Audio too large to transcribe. Try a shorter message.' 
+                        transcription: 'Audio too large to transcribe automatically.' 
                     });
                 }
                 
-                console.log(`Transcribing voice message ${messageId} (${Math.round(audioData.length/1024)}KB)`);
-                
                 // Check if AI client is initialized
                 if (!this.aiClient) {
-                    console.log('AI client not initialized for voice transcription');
                     return res.json({
                         messageId,
                         transcription: 'Voice transcription service unavailable.'
@@ -302,24 +300,29 @@ class WhatsAppAIClient {
                 }
                 
                 try {
+                    // For large files (over 500KB), use a simpler approach
+                    if (sizeKB > 500) {
+                        return res.json({
+                            messageId,
+                            transcription: 'Voice message received. Transcription not available for large audio files.'
+                        });
+                    }
+                    
                     // Use AI to generate a transcription/summary of the voice message
                     const transcription = await this.transcribeVoiceMessage(audioData, mimeType);
-                    
-                    console.log(`Transcription completed for message ${messageId}`);
                     
                     // Return the transcription
                     res.json({ messageId, transcription });
                 } catch (transcriptionError) {
-                    console.error('Error transcribing voice message:', transcriptionError);
+                    // Silent error handling
                     res.json({ 
                         messageId, 
                         transcription: 'Could not transcribe audio. Try again later.' 
                     });
                 }
             } catch (error) {
-                console.error('Error processing voice transcription request:', error);
+                // Silent error handling
                 res.status(500).json({ 
-                    error: error.message,
                     messageId: req.body?.messageId || 'unknown',
                     transcription: 'Error processing transcription request.' 
                 });

@@ -1699,13 +1699,9 @@ class WhatsAppAIApp {
                 // Fetch profile picture
                 this.fetchProfilePicture(contactId, chatAvatarEl);
                 
-                // Set a default avatar color based on chat name
-                const avatarColor = this.getAvatarColor(chat.name);
+                // Use the setAvatarPlaceholder method instead of direct manipulation
                 if (!chatAvatarEl.querySelector('img')) {
-                    const isGroup = chatId.includes('@g.us');
-                    chatAvatarEl.innerHTML = isGroup 
-                        ? `<div class="group-avatar" style="background-color: ${avatarColor}"><i class="fas fa-users"></i></div>`
-                        : `<div class="profile-pic-placeholder" style="background-color: ${avatarColor}">${chat.name.charAt(0)}</div>`;
+                    this.setAvatarPlaceholder(chatAvatarEl, chat.name);
                 }
             }
         } else {
@@ -1724,15 +1720,11 @@ class WhatsAppAIApp {
                 // Copy profile picture from chat list if available
                 if (chatAvatarEl) {
                     const chatItemAvatar = chatItem.querySelector('.chat-avatar');
-                    if (chatItemAvatar) {
+                    if (chatItemAvatar && chatItemAvatar.innerHTML.trim()) {
                         chatAvatarEl.innerHTML = chatItemAvatar.innerHTML;
                     } else {
-                        // Set default avatar
-                        const avatarColor = this.getAvatarColor(chatName);
-                        const isGroup = chatId.includes('@g.us');
-                        chatAvatarEl.innerHTML = isGroup 
-                            ? `<div class="group-avatar" style="background-color: ${avatarColor}"><i class="fas fa-users"></i></div>`
-                            : `<div class="profile-pic-placeholder" style="background-color: ${avatarColor}">${chatName.charAt(0)}</div>`;
+                        // Set default avatar using our helper method
+                        this.setAvatarPlaceholder(chatAvatarEl, chatName);
                     }
                 }
             }
@@ -2691,23 +2683,12 @@ class WhatsAppAIApp {
             }
         }
 
-        // Debug logging
-        console.log('Rendering message:', {
-            type: message.type,
-            hasMedia: message.hasMedia,
-            body: message.body?.substring(0, 50) + '...',
-            media: message.media,
-            isGroup: isGroupMessage,
-            sender: senderName
-        });
-
         // Check for voice messages by type or body content
         if (
             message.type === 'audio' ||
             message.type === 'ptt' ||
             (message.body && message.body.includes('voice'))
         ) {
-            console.log('Rendering as voice message');
             messageContent = this.renderVoiceMessage(message);
         } else if (message.type === 'image' || message.type === 'video') {
             messageContent = this.renderMediaMessage(message);
@@ -2749,22 +2730,30 @@ class WhatsAppAIApp {
         const mimeType =
             (message.media && message.media.mimetype) || 'audio/ogg';
             
-        // Check if we already have a transcription
-        const transcription = message.transcription || message.summary || '';
+        // Check for transcription in message, then in local storage
+        let transcription = message.transcription || message.summary || '';
+        
+        // If no transcription in the message object, check local storage
+        if (!transcription) {
+            const storedTranscription = this.getVoiceTranscription(messageId);
+            if (storedTranscription) {
+                transcription = storedTranscription;
+                
+                // Update the message object with the stored transcription
+                message.transcription = transcription;
+            }
+        }
+        
         const hasTranscription = !!transcription;
         
-        // If no transcription, request one
+        // If no transcription, request one only if we have audio data
         if (!hasTranscription && audioData) {
-            this.requestVoiceTranscription(messageId, audioData, mimeType);
+            // Use a small delay to avoid blocking the UI
+            setTimeout(() => {
+                this.requestVoiceTranscription(messageId, audioData, mimeType);
+            }, 500);
         }
-
-        console.log('Rendering voice message:', {
-            messageId,
-            hasAudioData: !!audioData,
-            mimeType,
-            hasTranscription
-        });
-
+        
         return `
             <div class="voice-message" data-message-id="${messageId}">
                 <button class="voice-play-btn" data-message-id="${messageId}">
@@ -2796,38 +2785,56 @@ class WhatsAppAIApp {
                 return;
             }
             
-            // Request transcription from the server
-            const response = await fetch('/api/transcribe-voice', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    messageId,
-                    audioData,
-                    mimeType
-                }),
-            });
-            
-            // Even if response is not OK, try to get the error message
-            const result = await response.json().catch(e => ({ transcription: "Error parsing response" }));
-            
-            if (!response.ok) {
-                // If we have a transcription message in the error response, use it
-                if (result && result.transcription) {
-                    this.updateVoiceTranscription(messageId, result.transcription);
-                } else {
-                    this.updateVoiceTranscription(messageId, "Failed to transcribe audio");
-                }
+            // Check if the audio data is too large (over 1MB in base64)
+            if (audioData.length > 1000000) {
+                this.updateVoiceTranscription(messageId, "Audio too large to transcribe automatically");
+                
+                // Store a placeholder transcription
+                this.storeVoiceTranscription(messageId, "Audio too large to transcribe automatically");
                 return;
             }
             
-            // Update the transcription in the UI
-            this.updateVoiceTranscription(messageId, result.transcription || "Could not transcribe audio");
-            
-            // Store the transcription with the message
-            if (result.transcription) {
-                this.storeVoiceTranscription(messageId, result.transcription);
+            // Request transcription from the server
+            try {
+                const response = await fetch('/api/transcribe-voice', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messageId,
+                        audioData,
+                        mimeType
+                    }),
+                });
+                
+                // Even if response is not OK, try to get the error message
+                const result = await response.json().catch(e => ({ transcription: "Error parsing response" }));
+                
+                if (!response.ok) {
+                    // Handle specific error codes
+                    if (response.status === 413) { // Payload Too Large
+                        this.updateVoiceTranscription(messageId, "Audio too large to transcribe automatically");
+                        this.storeVoiceTranscription(messageId, "Audio too large to transcribe automatically");
+                    } else if (result && result.transcription) {
+                        this.updateVoiceTranscription(messageId, result.transcription);
+                        this.storeVoiceTranscription(messageId, result.transcription);
+                    } else {
+                        this.updateVoiceTranscription(messageId, "Failed to transcribe audio");
+                    }
+                    return;
+                }
+                
+                // Update the transcription in the UI
+                this.updateVoiceTranscription(messageId, result.transcription || "Could not transcribe audio");
+                
+                // Store the transcription with the message
+                if (result.transcription) {
+                    this.storeVoiceTranscription(messageId, result.transcription);
+                }
+            } catch (fetchError) {
+                // Handle network errors silently
+                this.updateVoiceTranscription(messageId, "Network error during transcription");
             }
             
         } catch (error) {
@@ -2849,6 +2856,7 @@ class WhatsAppAIApp {
     
     storeVoiceTranscription(messageId, transcription) {
         // Find the message in our cache and update it
+        let foundInCache = false;
         for (const [chatId, messages] of this.messages.entries()) {
             const messageIndex = messages.findIndex(m => {
                 const mId = m.id || (m.id && m.id._serialized);
@@ -2857,9 +2865,69 @@ class WhatsAppAIApp {
             
             if (messageIndex !== -1) {
                 messages[messageIndex].transcription = transcription;
+                foundInCache = true;
                 break;
             }
         }
+        
+        // Also store in local storage for persistence
+        try {
+            // Get existing transcriptions from local storage
+            const storedTranscriptions = JSON.parse(localStorage.getItem('voiceTranscriptions') || '{}');
+            
+            // Add or update this transcription
+            storedTranscriptions[messageId] = {
+                transcription,
+                timestamp: Date.now()
+            };
+            
+            // Store back to local storage
+            localStorage.setItem('voiceTranscriptions', JSON.stringify(storedTranscriptions));
+            
+            // Log success if this is a new transcription
+            if (!foundInCache) {
+                console.log(`Stored transcription for message ${messageId} in local storage only`);
+            }
+        } catch (error) {
+            // Silent error handling for localStorage issues
+        }
+    }
+    
+    // Load voice message transcriptions from local storage
+    loadVoiceTranscriptions() {
+        try {
+            return JSON.parse(localStorage.getItem('voiceTranscriptions') || '{}');
+        } catch (error) {
+            return {};
+        }
+    }
+    
+    // Get transcription for a voice message
+    getVoiceTranscription(messageId) {
+        // First check in-memory cache
+        for (const [chatId, messages] of this.messages.entries()) {
+            const message = messages.find(m => {
+                const mId = m.id || (m.id && m.id._serialized);
+                return mId === messageId;
+            });
+            
+            if (message && message.transcription) {
+                return message.transcription;
+            }
+        }
+        
+        // Then check local storage
+        try {
+            const storedTranscriptions = this.loadVoiceTranscriptions();
+            if (storedTranscriptions[messageId]) {
+                return storedTranscriptions[messageId].transcription;
+            }
+        } catch (error) {
+            // Silent error handling
+        }
+        
+        // No transcription found
+        return null;
     }
 
     renderMediaMessage(message) {
