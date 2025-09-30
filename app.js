@@ -375,6 +375,22 @@ class WhatsAppAIClient {
             }
         });
 
+        // API endpoint to get a specific contact
+        this.app.get('/api/contact/:contactId', async (req, res) => {
+            try {
+                const { contactId } = req.params;
+                const contact = await this.getContact(contactId);
+                if (contact) {
+                    res.json(contact);
+                } else {
+                    res.status(404).json({ error: 'Contact not found' });
+                }
+            } catch (error) {
+                console.error('Get contact error:', error);
+                res.status(500).json({ error: 'Failed to get contact' });
+            }
+        });
+
         // API endpoint to sync with Google Contacts
         this.app.post('/api/sync-google-contacts', async (req, res) => {
             try {
