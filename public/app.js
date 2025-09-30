@@ -796,6 +796,14 @@ class WhatsAppAIApp {
         return text.substring(0, maxLength - 3) + '...';
     }
     
+    // Helper method to escape HTML characters
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
     // Generate a color based on the name for profile picture placeholders
     getDefaultProfilePic(name) {
         // Generate a consistent color based on the name
